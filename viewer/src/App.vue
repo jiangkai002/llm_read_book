@@ -2,26 +2,13 @@
 import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import PdfShow from './components/PdfShow.vue' // 导入 PdfShow 组件
+import Test from './components/Test.vue'
+import PdfViewer from '@/components/PdfShow.vue' // 导入 Test 组件
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125" />
-
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-
-      <nav>
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/about">About</RouterLink>
-      </nav>
-    </div>
-  </header>
-
-  <RouterView />
-
   <!-- 使用 PdfShow 组件并传递 PDF 文件路径 -->
-  <PdfShow src="@/assets/sample.pdf" />
+  <pdf-viewer url="/541118 深入理解计算机系统（原书第三版3）@www.java1234.com.pdf" />
 </template>
 
 <style scoped>

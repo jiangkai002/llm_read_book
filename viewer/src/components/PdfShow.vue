@@ -1,197 +1,196 @@
+<!-- PdfViewer.vue -->
 <template>
   <div class="pdf-viewer">
-    <div v-if="loading" class="loading">Loading PDF...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="pdf-container">
-      <div class="toolbar">
-        <button @click="prevPage" :disabled="currentPage <= 1">Previous</button>
-        <span>Page {{ currentPage }} of {{ totalPages }}</span>
-        <button @click="nextPage" :disabled="currentPage >= totalPages">Next</button>
-        <input
-          type="range"
-          min="1"
-          :max="totalPages"
-          v-model.number="currentPage"
-          class="page-slider"
-        />
-        <select v-model="scale">
-          <option value="0.5">50%</option>
-          <option value="0.75">75%</option>
-          <option value="1">100%</option>
-          <option value="1.25">125%</option>
-          <option value="1.5">150%</option>
-          <option value="2">200%</option>
-        </select>
-      </div>
-      <canvas ref="pdfCanvas" class="pdf-canvas"></canvas>
+    <div class="controls">
+      <button @click="prevPage" :disabled="pageNum <= 1">上一页</button>
+      <span>第 {{ pageNum }} 页 / 共 {{ pageCount }} 页</span>
+      <button @click="nextPage" :disabled="pageNum >= pageCount">下一页</button>
+    </div>
+    <div ref="pageContainer" class="page-container">
+      <canvas ref="pdfCanvas"></canvas>
+      <div ref="textLayer" class="text-layer"></div>
     </div>
   </div>
 </template>
 
-<script>
-import { ref, onMounted, watch } from 'vue'
-import * as pdfjs from 'pdfjs-dist'
+<script lang="ts">
+import { defineComponent, ref, onMounted, watch } from 'vue'
+import * as pdfjsLib from 'pdfjs-dist'
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { TextLayerBuilder } from 'pdfjs-dist/web/pdf_viewer.mjs'
 
-// Set the worker source path
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+// 设置本地 Worker 路径
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
-export default {
-  name: 'PdfShow',
+export default defineComponent({
+  name: 'PdfViewer',
   props: {
-    src: {
+    url: {
       type: String,
       required: true,
     },
   },
-  setup(props) {
-    const pdfCanvas = ref(null)
-    const pdfDoc = ref(null)
-    const currentPage = ref(1)
-    const totalPages = ref(0)
-    const loading = ref(true)
-    const error = ref(null)
-    const scale = ref(1)
 
+  setup(props) {
+    const pdfCanvas = ref<HTMLCanvasElement | null>(null)
+    const textLayer = ref<HTMLDivElement | null>(null)
+    const pageContainer = ref<HTMLDivElement | null>(null)
+    const pageNum = ref(1)
+    const pageCount = ref(0)
+    let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
+    const scale = 2 // 调整缩放比例，避免过小
+
+    // 加载 PDF
     const loadPdf = async () => {
       try {
-        loading.value = true
-        error.value = null
-
-        const loadingTask = pdfjs.getDocument(props.src)
-        pdfDoc.value = await loadingTask.promise
-        totalPages.value = pdfDoc.value.numPages
-
-        renderPage(currentPage.value)
-        loading.value = false
-      } catch (err) {
-        console.error('Error loading PDF:', err)
-        error.value = 'Failed to load PDF document.'
-        loading.value = false
+        const loadingTask = pdfjsLib.getDocument(props.url)
+        pdfDoc = await loadingTask.promise
+        pageCount.value = pdfDoc.numPages
+        renderPage(pageNum.value)
+      } catch (error) {
+        console.error('PDF 加载失败:', error)
       }
     }
 
-    const renderPage = async (pageNum) => {
-      if (!pdfDoc.value) return
+    // 渲染页面
+    const renderPage = async (num: number) => {
+      if (!pdfDoc || !pdfCanvas.value || !textLayer.value) return
 
       try {
-        const page = await pdfDoc.value.getPage(pageNum)
-        const viewport = page.getViewport({ scale: parseFloat(scale.value) })
+        const page = await pdfDoc.getPage(num)
+        const viewport = page.getViewport({ scale })
 
+        // 准备 canvas
         const canvas = pdfCanvas.value
         const context = canvas.getContext('2d')
-
+        if (!context) return
         canvas.height = viewport.height
         canvas.width = viewport.width
 
+        // 渲染 PDF 到 canvas
         const renderContext = {
           canvasContext: context,
-          viewport,
+          viewport: viewport,
         }
+        const renderTask = page.render(renderContext)
+        await renderTask.promise
 
-        await page.render(renderContext).promise
-      } catch (err) {
-        console.error('Error rendering page:', err)
-        error.value = 'Failed to render PDF page.'
+        // 渲染文本层
+        const textLayerDiv = textLayer.value
+        console.log('textLayerDiv:', textLayerDiv)
+
+        // 清空之前的文本层内容
+        textLayerDiv.innerHTML = ''
+
+        // 创建 TextLayerBuilder 实例
+        const textLayerBuilder = new TextLayerBuilder({
+          pdfPage: page,
+        })
+
+        // 设置文本层容器的基本样式
+        textLayerDiv.style.width = `${viewport.width}px`
+        textLayerDiv.style.height = `${viewport.height}px`
+        textLayerDiv.style.position = 'absolute'
+        textLayerDiv.style.top = '0'
+        textLayerDiv.style.left = '0'
+        //设置文本颜色黑色
+        textLayerDiv.style.color = 'black'
+
+        // 将 TextLayerBuilder 的 div 添加到 textLayer 容器中
+        textLayerDiv.appendChild(textLayerBuilder.div)
+        console.log('textLayerBuilder:', textLayerBuilder.div)
+
+        // 获取文本内容并渲染文本层
+        const textContent = await page.getTextContent()
+        console.log('textContent:', textContent)
+        await textLayerBuilder.render({
+          viewport: viewport,
+          textContentParams: { textContent }, // 显式传递 textContent
+        })
+      } catch (error) {
+        console.error('页面渲染失败:', error)
       }
     }
 
-    const nextPage = () => {
-      if (currentPage.value < totalPages.value) {
-        currentPage.value++
-      }
-    }
-
+    // 上一页
     const prevPage = () => {
-      if (currentPage.value > 1) {
-        currentPage.value--
-      }
+      if (pageNum.value <= 1) return
+      pageNum.value--
     }
 
+    // 下一页
+    const nextPage = () => {
+      if (pageNum.value >= pageCount.value) return
+      pageNum.value++
+    }
+
+    // 监听页码变化
+    watch(pageNum, (newPage) => {
+      renderPage(newPage)
+    })
+
+    // 监听 URL 变化
     watch(
-      () => props.src,
+      () => props.url,
       () => {
-        if (props.src) {
-          loadPdf()
-        }
+        pageNum.value = 1
+        loadPdf()
       },
-      { immediate: true },
     )
 
-    watch(currentPage, () => {
-      renderPage(currentPage.value)
-    })
-
-    watch(scale, () => {
-      renderPage(currentPage.value)
-    })
-
     onMounted(() => {
-      if (props.src) {
-        loadPdf()
-      }
+      loadPdf()
     })
 
     return {
       pdfCanvas,
-      currentPage,
-      totalPages,
-      loading,
-      error,
-      scale,
-      nextPage,
+      textLayer,
+      pageContainer,
+      pageNum,
+      pageCount,
       prevPage,
+      nextPage,
     }
   },
-}
+})
 </script>
 
 <style scoped>
 .pdf-viewer {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
   width: 100%;
-}
-
-.loading,
-.error {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  font-size: 18px;
-}
-
-.error {
-  color: red;
-}
-
-.pdf-container {
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
-  overflow: hidden;
-}
-
-.toolbar {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  background-color: #f0f0f0;
-  border-bottom: 1px solid #ddd;
 }
 
-.page-slider {
-  flex-grow: 1;
+.controls {
+  margin: 10px 0;
+}
+
+button {
   margin: 0 10px;
+  padding: 5px 10px;
 }
 
-.pdf-canvas {
-  margin: 0 auto;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  background-color: white;
-  max-height: calc(100vh - 80px);
-  overflow: auto;
+.page-container {
+  position: relative;
+}
+
+canvas {
+  border: 1px solid #ccc;
+}
+
+.text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* 移除可能干扰的样式 */
+}
+
+/* 文本层的子元素样式由 TextLayerBuilder 控制 */
+.text-layer span {
+  position: absolute;
+  white-space: pre;
+  cursor: text;
 }
 </style>
