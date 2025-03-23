@@ -1,20 +1,42 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
-import PdfShow from './components/PdfShow.vue' // 导入 PdfShow 组件
 import Test from './components/Test.vue'
-import PdfViewer from '@/components/PdfShow.vue' // 导入 Test 组件
+import PdfViewer from '@/components/PdfViewer.vue' // 导入
+import ScreenCapture from '@/components/ScreenCapture.vue' // 导入
+import { defineComponent } from 'vue'
 </script>
 
 <template>
-  <!-- 使用 PdfShow 组件并传递 PDF 文件路径 -->
-  <pdf-viewer url="/541118 深入理解计算机系统（原书第三版3）@www.java1234.com.pdf" />
+  <div class="app">
+    <PdfViewer url="/test.pdf" id="pdf" />
+    <ScreenCapture targetId="pdf"  />
+  </div>
 </template>
 
 <style scoped>
-header {
+/* header {
   line-height: 1.5;
   max-height: 100vh;
+} */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+  background-color: brown;
+}
+
+.pdf-container {
+  display: flex;
+  flex-direction: column;
+  align-items: left;
+  padding: 0 var(--section-gap);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .logo {

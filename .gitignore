@@ -30,3 +30,8 @@ coverage
 *.pdf
 
 *.tsbuildinfo
+
+#python 虚拟环境
+venv
+
+*.jpg
