@@ -16,9 +16,6 @@ import { defineComponent } from 'vue'
       <div class="block-2">
         <ScreenCapture targetId="pdf" />
       </div>
-      <div class="block-3">
-        <h3>block 3</h3>
-      </div>
     </div>
   </div>
 </template>
@@ -49,7 +46,7 @@ import { defineComponent } from 'vue'
 }
 
 .block-2 {
-  height: 50%; /* 占右侧高度的50% */
+  height: 100vh; /* 占右侧高度的50% */
   background-color: #e0e0e0; /* 可选：添加背景色以区分区域 */
 }
 
