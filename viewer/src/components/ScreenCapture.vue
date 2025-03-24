@@ -22,36 +22,11 @@
     <div v-if="isSelecting" class="selection-box" :style="selectionStyle"></div>
 
     <!-- 提问对话框 -->
-    <div v-if="showDialog" class="dialog-overlay">
-      <div class="dialog-content">
-        <h3 class="dialog-title">对图片提问</h3>
-        <div class="dialog-body">
-          <div class="image-preview">
-            <img :src="screenshot || ''" alt="当前截取的屏幕画面" />
-          </div>
-          <div class="question-section">
-            <textarea v-model="question" placeholder="请输入您的问题..." rows="4"></textarea>
-          </div>
-          <div class="answer" v-if="answer">
-            <h4>回答：</h4>
-            <p>{{ answer }}</p>
-            <div class="note-section" v-if="answer">
-              <button
-                class="generate-note-btn"
-                @click="handleGenerateNote"
-                :disabled="isGeneratingNote"
-              >
-                {{ isGeneratingNote ? '生成中...' : '生成笔记' }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button @click="askQuestion" :disabled="!question.trim()">提问</button>
-          <button @click="closeDialog">关闭</button>
-        </div>
-      </div>
-    </div>
+    <QuestionDialog
+      v-model="showDialog"
+      :screenshot="screenshot || ''"
+      @generate-note="handleGenerateNote"
+    />
 
     <!-- 笔记内容区域 -->
     <div v-if="noteContent" class="note-container">
@@ -70,9 +45,13 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue'
 import html2canvas from 'html2canvas'
 import { marked } from 'marked'
+import QuestionDialog from './QuestionDialog.vue'
 
 export default defineComponent({
   name: 'ScreenCapture',
+  components: {
+    QuestionDialog
+  },
   props: {
     targetId: {
       type: String,
@@ -88,10 +67,7 @@ export default defineComponent({
     const endY = ref(0)
     const screenshot = ref<string | null>(null)
     const showDialog = ref(false)
-    const question = ref('')
-    const answer = ref('')
     const noteContent = ref('')
-    const isGeneratingNote = ref(false)
 
     const selectionStyle = computed(() => ({
       left: `${Math.min(startX.value, endX.value)}px`,
@@ -163,7 +139,6 @@ export default defineComponent({
       screenshot.value = null
     }
 
-    // 新增：保存截图到本地
     const saveScreenshot = () => {
       if (!screenshot.value) return
 
@@ -173,76 +148,8 @@ export default defineComponent({
       link.click()
     }
 
-    const generateNote = async () => {
-      if (!answer.value || !screenshot.value) return
-
-      isGeneratingNote.value = true
-      try {
-        // TODO: 调用后端API生成笔记
-        // const response = await fetch('/api/generate-note', {
-        //   method: 'POST',
-        //   body: JSON.stringify({
-        //     image: screenshot.value,
-        //     question: question.value,
-        //     answer: answer.value
-        //   })
-        // })
-        // const data = await response.json()
-        // noteContent.value = data.note
-
-        // 临时模拟笔记内容
-        noteContent.value = `# 截图笔记
-
-## 问题
-${question.value}
-
-## 回答
-${answer.value}
-
-## 总结
-这是一个基于截图内容生成的笔记。实际使用时需要连接后端API来生成更详细的笔记内容。`
-      } catch (error) {
-        console.error('生成笔记失败:', error)
-        noteContent.value = '抱歉，生成笔记时出现错误。'
-      } finally {
-        isGeneratingNote.value = false
-      }
-    }
-
-    const closeDialog = () => {
-      showDialog.value = false
-      question.value = ''
-      answer.value = ''
-      noteContent.value = ''
-    }
-
-    const askQuestion = async () => {
-      if (!question.value.trim() || !screenshot.value) return
-
-      try {
-        // TODO: 这里需要调用后端API来处理图片和问题
-        // 示例代码：
-        // const response = await fetch('/api/ask', {
-        //   method: 'POST',
-        //   body: JSON.stringify({
-        //     image: screenshot.value,
-        //     question: question.value
-        //   })
-        // })
-        // const data = await response.json()
-        // answer.value = data.answer
-
-        // 临时模拟回答
-        answer.value = '这是一个模拟的回答。实际使用时需要连接后端API来处理图片和问题。'
-      } catch (error) {
-        console.error('提问失败:', error)
-        answer.value = '抱歉，处理您的问题时出现错误。'
-      }
-    }
-
-    const handleGenerateNote = async () => {
-      await generateNote()
-      closeDialog()
+    const handleGenerateNote = (content: string) => {
+      noteContent.value = content
     }
 
     const clearNote = () => {
@@ -263,16 +170,11 @@ ${answer.value}
       selectionStyle,
       screenshot,
       showDialog,
-      question,
-      answer,
       noteContent,
-      isGeneratingNote,
       renderedNote,
       toggleCapture,
       clearScreenshot,
       saveScreenshot,
-      closeDialog,
-      askQuestion,
       handleGenerateNote,
       clearNote,
     }
@@ -363,7 +265,7 @@ ${answer.value}
 }
 
 .dialog-content {
-  background-color: white;
+  background-color: rgb(255, 255, 255);
   padding: 20px;
   border-radius: 8px;
   width: 80%;
