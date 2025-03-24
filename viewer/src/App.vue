@@ -9,8 +9,17 @@ import { defineComponent } from 'vue'
 
 <template>
   <div class="app">
-    <PdfViewer url="/test.pdf" id="pdf" />
-    <ScreenCapture targetId="pdf"  />
+    <div class="pdf">
+      <PdfViewer url="/test.pdf" id="pdf" />
+    </div>
+    <div class="right-container">
+      <div class="block-2">
+        <ScreenCapture targetId="pdf" />
+      </div>
+      <div class="block-3">
+        <h3>block 3</h3>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -22,12 +31,31 @@ import { defineComponent } from 'vue'
 
 .app {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  width: 100%;
-  background-color: brown;
+  height: 100vh; /* 占满整个视口高度 */
+  width: 100vw; /* 占满整个视口宽度 */
+}
+
+.pdf {
+  width: 50%; /* 左侧占50%宽度 */
+  height: 100%; /* 高度占满 */
+  background-color: #f0f0f0; /* 可选：添加背景色以区分区域 */
+}
+
+.right-container {
+  width: 50%; /* 右侧占50%宽度 */
+  height: 100%; /* 高度占满 */
+  display: flex;
+  flex-direction: column; /* 垂直排列 Block 2 和 Block 3 */
+}
+
+.block-2 {
+  height: 50%; /* 占右侧高度的50% */
+  background-color: #e0e0e0; /* 可选：添加背景色以区分区域 */
+}
+
+.block-3 {
+  height: 50%; /* 占右侧高度的50% */
+  background-color: #d0d0d0; /* 可选：添加背景色以区分区域 */
 }
 
 .pdf-container {

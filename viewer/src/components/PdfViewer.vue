@@ -1,6 +1,6 @@
 <!-- PdfViewer.vue -->
 <template>
-  <div class="pdf-viewer">
+  <div class="pdf-viewer" @wheel.prevent="handleWheel" ref="viewerContainer">
     <div class="controls">
       <button @click="prevPage" :disabled="pageNum <= 1">上一页</button>
       <span>第 {{ pageNum }} 页 / 共 {{ pageCount }} 页</span>
@@ -9,7 +9,9 @@
       <button @click="zoomOut">-</button>
       <span>缩放: {{ (scale * 100).toFixed(0) }}%</span>
     </div>
-    <canvas ref="pdfCanvas"></canvas>
+    <div class="canvas-container" ref="canvasContainer">
+      <canvas ref="pdfCanvas" class="canvas"></canvas>
+    </div>
   </div>
 </template>
 
@@ -17,7 +19,6 @@
 import { defineComponent, ref, onMounted, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-// 设置本地 Worker 路径
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 export default defineComponent({
@@ -31,12 +32,13 @@ export default defineComponent({
 
   setup(props) {
     const pdfCanvas = ref<HTMLCanvasElement | null>(null)
+    const viewerContainer = ref<HTMLDivElement | null>(null)
+    const canvasContainer = ref<HTMLDivElement | null>(null)
     const pageNum = ref(1)
     const pageCount = ref(0)
-    const scale = ref(1.0)
+    const scale = ref(1)
     let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
 
-    // 加载PDF文档
     const loadPdf = async () => {
       try {
         const loadingTask = pdfjsLib.getDocument(props.url)
@@ -48,7 +50,6 @@ export default defineComponent({
       }
     }
 
-    // 渲染页面
     const renderPage = async (num: number) => {
       if (!pdfDoc || !pdfCanvas.value) return
 
@@ -74,35 +75,51 @@ export default defineComponent({
       }
     }
 
-    // 上一页
     const prevPage = () => {
       if (pageNum.value <= 1) return
       pageNum.value -= 1
       renderPage(pageNum.value)
     }
 
-    // 下一页
     const nextPage = () => {
       if (pageNum.value >= pageCount.value) return
       pageNum.value += 1
       renderPage(pageNum.value)
     }
 
-    // 放大
     const zoomIn = () => {
-      if (scale.value >= 2.0) return
+      if (scale.value >= 3.0) return
       scale.value += 0.1
       renderPage(pageNum.value)
     }
 
-    // 缩小
     const zoomOut = () => {
       if (scale.value <= 0.5) return
       scale.value -= 0.1
       renderPage(pageNum.value)
     }
 
-    // 监听URL变化
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+
+      if (event.ctrlKey) {
+        // Ctrl + 滚轮用于缩放
+        const zoomSpeed = 0.1
+        const delta = event.deltaY > 0 ? -zoomSpeed : zoomSpeed
+        const newScale = scale.value + delta
+
+        if (newScale >= 0.5 && newScale <= 3.0) {
+          scale.value = newScale
+          renderPage(pageNum.value)
+        }
+      } else if (canvasContainer.value) {
+        // 普通滚轮用于滚动
+        const scrollSpeed = 50 // 控制滚动速度
+        canvasContainer.value.scrollTop += (event.deltaY * scrollSpeed) / 100
+        canvasContainer.value.scrollLeft += (event.deltaX * scrollSpeed) / 100
+      }
+    }
+
     watch(
       () => props.url,
       () => {
@@ -111,7 +128,6 @@ export default defineComponent({
       },
     )
 
-    // 监听页面变化
     watch(pageNum, (newPageNum) => {
       renderPage(newPageNum)
     })
@@ -122,6 +138,8 @@ export default defineComponent({
 
     return {
       pdfCanvas,
+      viewerContainer,
+      canvasContainer,
       pageNum,
       pageCount,
       scale,
@@ -129,6 +147,7 @@ export default defineComponent({
       nextPage,
       zoomIn,
       zoomOut,
+      handleWheel,
     }
   },
 })
@@ -137,6 +156,7 @@ export default defineComponent({
 <style scoped>
 .pdf-viewer {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -144,6 +164,11 @@ export default defineComponent({
 
 .controls {
   margin-bottom: 10px;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+  padding: 5px;
 }
 
 button {
@@ -151,7 +176,17 @@ button {
   padding: 5px 10px;
 }
 
-canvas {
-  border: 1px solid #ccc;
+.canvas-container {
+  width: 100%;
+  height: calc(100% - 50px);
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.canvas {
+  border: 1px solid #ca1a1a;
+  display: block;
 }
 </style>
