@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
-import HelloWorld from './components/HelloWorld.vue'
 import Test from './components/Test.vue'
 import PdfViewer from '@/components/PdfViewer.vue' // 导入
 import ScreenCapture from '@/components/ScreenCapture.vue' // 导入
