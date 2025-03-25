@@ -1,6 +1,6 @@
 <!-- ScreenCapture.vue -->
 <template>
-  <div class="screen-capture-container">
+  <div class="screen-capture-container" ref="containerRef">
     <!-- 控制按钮 -->
     <button class="toggle-button" :class="{ active: isCaptureEnabled }" @click="toggleCapture">
       {{ isCaptureEnabled ? '关闭截图' : '开启截图' }}
@@ -29,7 +29,14 @@
     />
 
     <!-- 笔记内容区域 -->
-    <div v-if="noteContent" class="note-container">
+    <div v-if="noteContent" 
+         class="note-container"
+         ref="noteContainerRef"
+         :style="{ 
+           transform: `translate(${notePosition.x}px, ${notePosition.y}px)`,
+           cursor: isDragging ? 'grabbing' : 'grab'
+         }"
+         @mousedown="startDragging">
       <div class="note-header">
         <h3>笔记内容</h3>
         <button class="close-note-btn" @click="clearNote">关闭笔记</button>
@@ -68,6 +75,11 @@ export default defineComponent({
     const screenshot = ref<string | null>(null)
     const showDialog = ref(false)
     const noteContent = ref('')
+    const isDragging = ref(false)
+    const notePosition = ref({ x: 20, y: 20 })
+    const dragOffset = ref({ x: 0, y: 0 })
+    const containerRef = ref<HTMLElement | null>(null)
+    const noteContainerRef = ref<HTMLElement | null>(null)
 
     const selectionStyle = computed(() => ({
       left: `${Math.min(startX.value, endX.value)}px`,
@@ -156,12 +168,49 @@ export default defineComponent({
       noteContent.value = ''
     }
 
+    const startDragging = (e: MouseEvent) => {
+      isDragging.value = true
+      dragOffset.value = {
+        x: e.clientX - notePosition.value.x,
+        y: e.clientY - notePosition.value.y
+      }
+      document.addEventListener('mousemove', updateDragPosition)
+      document.addEventListener('mouseup', stopDragging)
+    }
+
+    const updateDragPosition = (e: MouseEvent) => {
+      if (!isDragging.value || !containerRef.value || !noteContainerRef.value) return
+
+      const container = containerRef.value
+      const noteContainer = noteContainerRef.value
+      const containerRect = container.getBoundingClientRect()
+      const noteRect = noteContainer.getBoundingClientRect()
+
+      // 计算新位置
+      let newX = e.clientX - dragOffset.value.x
+      let newY = e.clientY - dragOffset.value.y
+
+      // 限制在容器范围内
+      newX = Math.max(0, Math.min(newX, containerRect.width - noteRect.width))
+      newY = Math.max(0, Math.min(newY, containerRect.height - noteRect.height))
+
+      notePosition.value = { x: newX, y: newY }
+    }
+
+    const stopDragging = () => {
+      isDragging.value = false
+      document.removeEventListener('mousemove', updateDragPosition)
+      document.removeEventListener('mouseup', stopDragging)
+    }
+
     onMounted(() => {
       document.addEventListener('mousedown', startSelection)
     })
 
     onUnmounted(() => {
       document.removeEventListener('mousedown', startSelection)
+      document.removeEventListener('mousemove', updateDragPosition)
+      document.removeEventListener('mouseup', stopDragging)
     })
 
     return {
@@ -172,11 +221,16 @@ export default defineComponent({
       showDialog,
       noteContent,
       renderedNote,
+      notePosition,
+      isDragging,
+      containerRef,
+      noteContainerRef,
       toggleCapture,
       clearScreenshot,
       saveScreenshot,
       handleGenerateNote,
       clearNote,
+      startDragging,
     }
   },
 })
@@ -389,17 +443,19 @@ export default defineComponent({
 }
 
 .note-container {
-  position: fixed;
-  top: 20px;
-  right: 20px;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 400px;
   max-height: 80vh;
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  z-index: 10000;
+  z-index: 100;
   display: flex;
   flex-direction: column;
+  user-select: none;
+  touch-action: none;
 }
 
 .note-header {
