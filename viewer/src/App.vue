@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import Test from './components/Test.vue'
-import PdfViewer from '@/components/PdfViewer.vue' // 导入
-import ScreenCapture from '@/components/ScreenCapture.vue' // 导入
+import PdfViewer from '@/components/PdfViewer.vue'
+import ScreenCapture from '@/components/ScreenCapture.vue'
 import { defineComponent } from 'vue'
 </script>
 
@@ -32,13 +32,13 @@ import { defineComponent } from 'vue'
 }
 
 .pdf {
-  width: 50%; /* 左侧占50%宽度 */
+  width: 70%; /* 左侧占50%宽度 */
   height: 100%; /* 高度占满 */
   background-color: #f0f0f0; /* 可选：添加背景色以区分区域 */
 }
 
 .right-container {
-  width: 50%; /* 右侧占50%宽度 */
+  width: 30%; /* 右侧占50%宽度 */
   height: 100%; /* 高度占满 */
   display: flex;
   flex-direction: column; /* 垂直排列 Block 2 和 Block 3 */

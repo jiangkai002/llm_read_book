@@ -12,6 +12,7 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@embedpdf/vue-pdf-viewer": "^2.9.0",
     "@types/marked": "^6.0.0",
     "html2canvas": "^1.4.1",
     "marked": "^15.0.7",
