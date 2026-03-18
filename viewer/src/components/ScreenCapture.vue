@@ -65,7 +65,8 @@ export default defineComponent({
       default: '',
     },
   },
-  setup(props) {
+  emits: ['screenshot', 'text-select'],
+  setup(props, { emit }) {
     const isSelecting = ref(false)
     const isCaptureEnabled = ref(false)
     const startX = ref(0)
@@ -142,6 +143,7 @@ export default defineComponent({
         })
 
         screenshot.value = canvas.toDataURL('image/png')
+        emit('screenshot', screenshot.value)
       } catch (error) {
         console.error('截图失败:', error)
       }
