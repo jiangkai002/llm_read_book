@@ -40,7 +40,7 @@ watch(
   () => props.screenshot,
   (val) => {
     if (val) attachedImage.value = val
-  },
+  }
 )
 
 watch(
@@ -50,7 +50,7 @@ watch(
       inputText.value = val
       nextTick(() => textareaRef.value?.focus())
     }
-  },
+  }
 )
 
 const saveConfig = () => {
@@ -233,7 +233,8 @@ onMounted(() => {
   messages.value.push({
     id: '0',
     role: 'assistant',
-    content: '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置 API 信息。',
+    content:
+      '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置 API 信息。',
     timestamp: new Date(),
   })
 })
@@ -249,7 +250,14 @@ onMounted(() => {
       </div>
       <div class="header-actions">
         <button class="icon-btn" title="清空对话" @click="clearHistory">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6l-1 14H6L5 6"></path>
             <path d="M10 11v6M14 11v6"></path>
@@ -257,9 +265,18 @@ onMounted(() => {
           </svg>
         </button>
         <button class="icon-btn" title="API 配置" @click="showConfig = !showConfig">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            ></path>
           </svg>
         </button>
       </div>
@@ -270,7 +287,10 @@ onMounted(() => {
       <div v-if="showConfig" class="config-panel">
         <div class="config-row">
           <label>API 端点</label>
-          <input v-model="apiConfig.endpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+          <input
+            v-model="apiConfig.endpoint"
+            placeholder="https://api.openai.com/v1/chat/completions"
+          />
         </div>
         <div class="config-row">
           <label>API Key</label>
@@ -286,12 +306,7 @@ onMounted(() => {
 
     <!-- 消息列表 -->
     <div class="chat-messages" ref="chatContainerRef">
-      <div
-        v-for="msg in messages"
-        :key="msg.id"
-        class="message-row"
-        :class="msg.role"
-      >
+      <div v-for="msg in messages" :key="msg.id" class="message-row" :class="msg.role">
         <div class="avatar">
           <span v-if="msg.role === 'assistant'">✦</span>
           <span v-else>你</span>
@@ -316,7 +331,10 @@ onMounted(() => {
       </div>
 
       <!-- 加载中 -->
-      <div v-if="isLoading && messages[messages.length - 1]?.isStreaming === false" class="loading-dots">
+      <div
+        v-if="isLoading && messages[messages.length - 1]?.isStreaming === false"
+        class="loading-dots"
+      >
         <span></span><span></span><span></span>
       </div>
     </div>
@@ -557,7 +575,9 @@ onMounted(() => {
   margin-left: 1px;
 }
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* 加载点 */
@@ -573,11 +593,23 @@ onMounted(() => {
   background: #9ca3af;
   animation: dot-pulse 1.2s infinite ease-in-out;
 }
-.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
 @keyframes dot-pulse {
-  0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-  40% { transform: scale(1.2); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
 }
 
 /* ── 输入区 ── */
@@ -676,7 +708,9 @@ textarea::placeholder {
   font-size: 16px;
 }
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .input-hint {
