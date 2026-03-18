@@ -6,15 +6,24 @@ import AiChat from '@/components/AiChat.vue'
 
 const capturedScreenshot = ref<string | null>(null)
 const selectedText = ref<string | null>(null)
+const captureTrigger = ref(0)
 
 const handleScreenshot = (img: string) => {
   capturedScreenshot.value = img
-  setTimeout(() => { capturedScreenshot.value = null }, 100)
+  setTimeout(() => {
+    capturedScreenshot.value = null
+  }, 100)
 }
 
 const handleTextSelect = (text: string) => {
   selectedText.value = text
-  setTimeout(() => { selectedText.value = null }, 100)
+  setTimeout(() => {
+    selectedText.value = null
+  }, 100)
+}
+
+const requestScreenshot = () => {
+  captureTrigger.value += 1
 }
 </script>
 
@@ -23,6 +32,7 @@ const handleTextSelect = (text: string) => {
     <div class="pdf-area">
       <PdfViewer url="/test.pdf" id="pdf" />
       <ScreenCapture
+        :capture-trigger="captureTrigger"
         targetId="pdf"
         @screenshot="handleScreenshot"
         @text-select="handleTextSelect"
@@ -32,6 +42,7 @@ const handleTextSelect = (text: string) => {
       <AiChat
         :screenshot="capturedScreenshot"
         :selected-text="selectedText"
+        :on-request-screenshot="requestScreenshot"
       />
     </div>
   </div>
