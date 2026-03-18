@@ -628,6 +628,7 @@ textarea {
   border: 1px solid #d1d5db;
   border-radius: 10px;
   padding: 9px 12px;
+  font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
   font-size: 13.5px;
   line-height: 1.5;
   outline: none;
