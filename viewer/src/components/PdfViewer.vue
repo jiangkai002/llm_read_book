@@ -6,7 +6,7 @@ import { PDFViewer } from '@embedpdf/vue-pdf-viewer'
   <div style="height: 100vh">
     <PDFViewer
       :config="{
-        src: '/jgs.pdf',
+        src: '/test.pdf',
         theme: { preference: 'light' },
       }"
       :style="{ width: '100%', height: '100%' }"

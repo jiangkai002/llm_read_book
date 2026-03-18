@@ -49,7 +49,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue'
+import { defineComponent, ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import html2canvas from 'html2canvas'
 import { marked } from 'marked'
 import QuestionDialog from './QuestionDialog.vue'
@@ -63,6 +63,11 @@ export default defineComponent({
     targetId: {
       type: String,
       default: '',
+    },
+    /** 由父组件传入，每次变化时开启截图模式（供右侧截图按钮触发） */
+    captureTrigger: {
+      type: Number,
+      default: 0,
     },
   },
   emits: ['screenshot', 'text-select'],
@@ -101,6 +106,18 @@ export default defineComponent({
         screenshot.value = null
       }
     }
+
+    /** 右侧截图按钮通过 captureTrigger 触发时调用 */
+    const enableCapture = () => {
+      isCaptureEnabled.value = true
+    }
+
+    watch(
+      () => props.captureTrigger,
+      () => {
+        if (props.captureTrigger > 0) enableCapture()
+      }
+    )
 
     const startSelection = (e: MouseEvent) => {
       if (!isCaptureEnabled.value || screenshot.value) return

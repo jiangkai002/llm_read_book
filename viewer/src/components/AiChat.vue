@@ -5,6 +5,8 @@ import { marked } from 'marked'
 const props = defineProps<{
   screenshot?: string | null
   selectedText?: string | null
+  /** 点击右侧截图按钮时由父组件传入，用于开启左侧 PDF 区域的框选截图，截完图会通过 screenshot prop 传回并显示在输入区 */
+  onRequestScreenshot?: () => void
 }>()
 
 interface Message {
@@ -249,6 +251,17 @@ onMounted(() => {
         <span>AI 助手</span>
       </div>
       <div class="header-actions">
+        <button
+          class="icon-btn"
+          title="截图（请在左侧 PDF 区域框选）"
+          @click="props.onRequestScreenshot?.()"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+        </button>
         <button class="icon-btn" title="清空对话" @click="clearHistory">
           <svg
             width="15"
