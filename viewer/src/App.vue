@@ -1,18 +1,40 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import PdfViewer from '@/components/PdfViewer.vue'
-import ScreenCapture from '@/components/ScreenCapture.vue'
 import AiChat from '@/components/AiChat.vue'
+import { CapturePlugin, type PluginRegistry } from '@embedpdf/vue-pdf-viewer'
 
 const capturedScreenshot = ref<string | null>(null)
 const selectedText = ref<string | null>(null)
-const captureTrigger = ref(0)
 
-const handleScreenshot = (img: string) => {
-  capturedScreenshot.value = img
-  setTimeout(() => {
-    capturedScreenshot.value = null
-  }, 100)
+const onPdfReady = (registry: PluginRegistry) => {
+  console.log('[App] onPdfReady fired, registry:', registry)
+
+  const capturePlugin = registry.getPlugin<CapturePlugin>(CapturePlugin.id)
+  console.log('[App] CapturePlugin.id =', CapturePlugin.id, ', plugin =', capturePlugin)
+
+  if (!capturePlugin) {
+    console.warn('[App] CapturePlugin not found! Available plugins:', registry)
+    return
+  }
+
+  capturePlugin.ready().then(() => {
+    const capability = capturePlugin.provides()
+    console.log('[App] CapturePlugin ready, capability:', capability)
+
+    capability.onCaptureArea((event) => {
+      console.log('[App] onCaptureArea fired!', event)
+      const reader = new FileReader()
+      reader.onload = () => {
+        console.log('[App] Blob converted to base64, length:', (reader.result as string).length)
+        capturedScreenshot.value = reader.result as string
+        setTimeout(() => {
+          capturedScreenshot.value = null
+        }, 100)
+      }
+      reader.readAsDataURL(event.blob)
+    })
+  })
 }
 
 const handleTextSelect = (text: string) => {
@@ -21,29 +43,15 @@ const handleTextSelect = (text: string) => {
     selectedText.value = null
   }, 100)
 }
-
-const requestScreenshot = () => {
-  captureTrigger.value += 1
-}
 </script>
 
 <template>
   <div class="app">
     <div class="pdf-area">
-      <PdfViewer url="/test.pdf" id="pdf" />
-      <ScreenCapture
-        :capture-trigger="captureTrigger"
-        targetId="pdf"
-        @screenshot="handleScreenshot"
-        @text-select="handleTextSelect"
-      />
+      <PdfViewer url="/jgs.pdf" id="pdf" @ready="onPdfReady" />
     </div>
     <div class="chat-area">
-      <AiChat
-        :screenshot="capturedScreenshot"
-        :selected-text="selectedText"
-        :on-request-screenshot="requestScreenshot"
-      />
+      <AiChat :screenshot="capturedScreenshot" :selected-text="selectedText" />
     </div>
   </div>
 </template>
