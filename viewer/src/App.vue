@@ -2,11 +2,19 @@
 import { ref } from 'vue'
 import PdfViewer from '@/components/PdfViewer.vue'
 import AiChat from '@/components/AiChat.vue'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { CapturePlugin, type PluginRegistry } from '@embedpdf/vue-pdf-viewer'
 
 const capturedScreenshot = ref<string | null>(null)
 const selectedText = ref<string | null>(null)
 const chatCollapsed = ref(false)
+const activeTab = ref<'chat' | 'markdown'>('chat')
+const mdEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
+
+const onSaveAsMarkdown = async (filename: string, mdContent: string) => {
+  activeTab.value = 'markdown'
+  await mdEditorRef.value?.saveNewFile(filename, mdContent)
+}
 
 const onPdfReady = (registry: PluginRegistry) => {
   const capturePlugin = registry.getPlugin<CapturePlugin>(CapturePlugin.id)
@@ -56,7 +64,36 @@ const toggleChat = () => {
 
     <transition name="slide-chat">
       <div v-show="!chatCollapsed" class="chat-area">
-        <AiChat :screenshot="capturedScreenshot" :selected-text="selectedText" />
+        <div class="panel-tabs">
+          <button
+            class="panel-tab"
+            :class="{ active: activeTab === 'chat' }"
+            @click="activeTab = 'chat'"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            AI 对话
+          </button>
+          <button
+            class="panel-tab"
+            :class="{ active: activeTab === 'markdown' }"
+            @click="activeTab = 'markdown'"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            Markdown
+          </button>
+        </div>
+        <div class="panel-content">
+          <AiChat v-show="activeTab === 'chat'" :screenshot="capturedScreenshot" :selected-text="selectedText" :on-save-as-markdown="onSaveAsMarkdown" />
+          <MarkdownEditor v-show="activeTab === 'markdown'" ref="mdEditorRef" />
+        </div>
       </div>
     </transition>
   </div>
@@ -119,6 +156,46 @@ const toggleChat = () => {
   height: 100%;
   overflow: hidden;
   border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabs {
+  display: flex;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.panel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.panel-tab:hover {
+  color: #6b7280;
+}
+
+.panel-tab.active {
+  color: #6366f1;
+  box-shadow: inset 0 -2px 0 #6366f1;
+}
+
+.panel-content {
+  flex: 1;
+  overflow: hidden;
 }
 
 .slide-chat-enter-active,

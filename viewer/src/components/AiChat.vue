@@ -5,8 +5,8 @@ import { marked } from 'marked'
 const props = defineProps<{
   screenshot?: string | null
   selectedText?: string | null
-  /** 点击右侧截图按钮时由父组件传入，用于开启左侧 PDF 区域的框选截图，截完图会通过 screenshot prop 传回并显示在输入区 */
   onRequestScreenshot?: () => void
+  onSaveAsMarkdown?: (filename: string, content: string) => void
 }>()
 
 interface Message {
@@ -231,6 +231,14 @@ const renderedContent = (content: string) => marked(content) as string
 const formatTime = (date: Date) =>
   date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
+const saveToMarkdown = (msg: Message) => {
+  if (!props.onSaveAsMarkdown) return
+  const ts = new Date().toISOString().slice(0, 10)
+  const slug = msg.content.slice(0, 20).replace(/[\\/:*?"<>|#\n]/g, '').trim() || 'note'
+  const filename = `${ts}-${slug}.md`
+  props.onSaveAsMarkdown(filename, msg.content)
+}
+
 onMounted(() => {
   messages.value.push({
     id: '0',
@@ -339,7 +347,22 @@ onMounted(() => {
             <span v-else>{{ msg.content }}</span>
             <span v-if="msg.isStreaming" class="cursor-blink">▋</span>
           </div>
-          <div class="msg-time">{{ formatTime(msg.timestamp) }}</div>
+          <div class="msg-meta">
+            <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
+            <button
+              v-if="msg.role === 'assistant' && msg.content && !msg.isStreaming && props.onSaveAsMarkdown"
+              class="save-md-btn"
+              title="保存为 Markdown 文件"
+              @click="saveToMarkdown(msg)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              保存
+            </button>
+          </div>
         </div>
       </div>
 
@@ -574,10 +597,36 @@ onMounted(() => {
   border-top-right-radius: 4px;
 }
 
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
 .msg-time {
   font-size: 11px;
   color: #9ca3af;
-  padding: 0 4px;
+}
+
+.save-md-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  color: #9ca3af;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.save-md-btn:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  color: #6366f1;
 }
 
 /* 光标闪烁 */
