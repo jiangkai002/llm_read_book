@@ -3,17 +3,24 @@ import { ref } from 'vue'
 import PdfViewer from '@/components/PdfViewer.vue'
 import AiChat from '@/components/AiChat.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
+import OnenoteEditor from '@/components/OnenoteEditor.vue'
 import { CapturePlugin, type PluginRegistry } from '@embedpdf/vue-pdf-viewer'
 
 const capturedScreenshot = ref<string | null>(null)
 const selectedText = ref<string | null>(null)
 const chatCollapsed = ref(false)
-const activeTab = ref<'chat' | 'markdown'>('chat')
+const activeTab = ref<'chat' | 'markdown' | 'onenote'>('chat')
 const mdEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
+const onenoteRef = ref<InstanceType<typeof OnenoteEditor> | null>(null)
 
 const onSaveAsMarkdown = async (filename: string, mdContent: string) => {
   activeTab.value = 'markdown'
   await mdEditorRef.value?.saveNewFile(filename, mdContent)
+}
+
+const onSaveToOnenote = async (title: string, mdContent: string) => {
+  activeTab.value = 'onenote'
+  await onenoteRef.value?.saveToOnenote(title, mdContent)
 }
 
 const onPdfReady = (registry: PluginRegistry) => {
@@ -89,10 +96,22 @@ const toggleChat = () => {
             </svg>
             Markdown
           </button>
+          <button
+            class="panel-tab"
+            :class="{ active: activeTab === 'onenote' }"
+            @click="activeTab = 'onenote'"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24">
+              <rect width="24" height="24" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
+              <text x="6" y="17" font-size="13" font-weight="bold" fill="currentColor" font-family="Arial">N</text>
+            </svg>
+            OneNote
+          </button>
         </div>
         <div class="panel-content">
-          <AiChat v-show="activeTab === 'chat'" :screenshot="capturedScreenshot" :selected-text="selectedText" :on-save-as-markdown="onSaveAsMarkdown" />
+          <AiChat v-show="activeTab === 'chat'" :screenshot="capturedScreenshot" :selected-text="selectedText" :on-save-as-markdown="onSaveAsMarkdown" :on-save-to-onenote="onSaveToOnenote" />
           <MarkdownEditor v-show="activeTab === 'markdown'" ref="mdEditorRef" />
+          <OnenoteEditor v-show="activeTab === 'onenote'" ref="onenoteRef" />
         </div>
       </div>
     </transition>

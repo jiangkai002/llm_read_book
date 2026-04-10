@@ -7,6 +7,7 @@ const props = defineProps<{
   selectedText?: string | null
   onRequestScreenshot?: () => void
   onSaveAsMarkdown?: (filename: string, content: string) => void
+  onSaveToOnenote?: (title: string, content: string) => void
 }>()
 
 interface Message {
@@ -239,6 +240,12 @@ const saveToMarkdown = (msg: Message) => {
   props.onSaveAsMarkdown(filename, msg.content)
 }
 
+const saveToOnenote = (msg: Message) => {
+  if (!props.onSaveToOnenote) return
+  const title = msg.content.split('\n')[0].replace(/^#+\s*/, '').slice(0, 50) || 'AI 笔记'
+  props.onSaveToOnenote(title, msg.content)
+}
+
 onMounted(() => {
   messages.value.push({
     id: '0',
@@ -351,16 +358,27 @@ onMounted(() => {
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
             <button
               v-if="msg.role === 'assistant' && msg.content && !msg.isStreaming && props.onSaveAsMarkdown"
-              class="save-md-btn"
+              class="save-action-btn"
               title="保存为 Markdown 文件"
               @click="saveToMarkdown(msg)"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
               </svg>
-              保存
+              .md
+            </button>
+            <button
+              v-if="msg.role === 'assistant' && msg.content && !msg.isStreaming && props.onSaveToOnenote"
+              class="save-action-btn onenote"
+              title="保存到 OneNote"
+              @click="saveToOnenote(msg)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="4" fill="none" stroke="currentColor" stroke-width="2.5" />
+                <text x="6" y="17" font-size="13" font-weight="bold" fill="currentColor" font-family="Arial">N</text>
+              </svg>
+              OneNote
             </button>
           </div>
         </div>
@@ -609,7 +627,7 @@ onMounted(() => {
   color: #9ca3af;
 }
 
-.save-md-btn {
+.save-action-btn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -623,10 +641,16 @@ onMounted(() => {
   transition: all 0.15s;
 }
 
-.save-md-btn:hover {
+.save-action-btn:hover {
   background: #ede9fe;
   border-color: #c4b5fd;
   color: #6366f1;
+}
+
+.save-action-btn.onenote:hover {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #7719AA;
 }
 
 /* 光标闪烁 */
