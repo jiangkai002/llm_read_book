@@ -1,7 +1,7 @@
 import msal
 
-client_id = '***REMOVED_CLIENT_ID***'
-client_secret = '***REMOVED_CLIENT_SECRET***'
+client_id = ''
+client_secret = ''
 tenant_id = 'common'
 authority = f"https://login.microsoftonline.com/{tenant_id}"
 
