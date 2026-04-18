@@ -5,8 +5,9 @@ import { marked } from 'marked'
 const props = defineProps<{
   screenshot?: string | null
   selectedText?: string | null
-  /** 点击右侧截图按钮时由父组件传入，用于开启左侧 PDF 区域的框选截图，截完图会通过 screenshot prop 传回并显示在输入区 */
   onRequestScreenshot?: () => void
+  onSaveAsMarkdown?: (filename: string, content: string) => void
+  onSaveToOnenote?: (title: string, content: string) => void
 }>()
 
 interface Message {
@@ -231,6 +232,28 @@ const renderedContent = (content: string) => marked(content) as string
 const formatTime = (date: Date) =>
   date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
+const saveToMarkdown = (msg: Message) => {
+  if (!props.onSaveAsMarkdown) return
+  const ts = new Date().toISOString().slice(0, 10)
+  const slug =
+    msg.content
+      .slice(0, 20)
+      .replace(/[\\/:*?"<>|#\n]/g, '')
+      .trim() || 'note'
+  const filename = `${ts}-${slug}.md`
+  props.onSaveAsMarkdown(filename, msg.content)
+}
+
+const saveToOnenote = (msg: Message) => {
+  if (!props.onSaveToOnenote) return
+  const title =
+    msg.content
+      .split('\n')[0]
+      .replace(/^#+\s*/, '')
+      .slice(0, 50) || 'AI 笔记'
+  props.onSaveToOnenote(title, msg.content)
+}
+
 onMounted(() => {
   messages.value.push({
     id: '0',
@@ -256,7 +279,14 @@ onMounted(() => {
           title="截图（请在左侧 PDF 区域框选）"
           @click="props.onRequestScreenshot?.()"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <circle cx="8.5" cy="8.5" r="1.5"></circle>
             <polyline points="21 15 16 10 5 21"></polyline>
@@ -339,7 +369,65 @@ onMounted(() => {
             <span v-else>{{ msg.content }}</span>
             <span v-if="msg.isStreaming" class="cursor-blink">▋</span>
           </div>
-          <div class="msg-time">{{ formatTime(msg.timestamp) }}</div>
+          <div class="msg-meta">
+            <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
+            <button
+              v-if="
+                msg.role === 'assistant' &&
+                msg.content &&
+                !msg.isStreaming &&
+                props.onSaveAsMarkdown
+              "
+              class="save-action-btn"
+              title="保存为 Markdown 文件"
+              @click="saveToMarkdown(msg)"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              .md
+            </button>
+            <button
+              v-if="
+                msg.role === 'assistant' && msg.content && !msg.isStreaming && props.onSaveToOnenote
+              "
+              class="save-action-btn onenote"
+              title="保存到 OneNote"
+              @click="saveToOnenote(msg)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24">
+                <rect
+                  width="24"
+                  height="24"
+                  rx="4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                />
+                <text
+                  x="6"
+                  y="17"
+                  font-size="13"
+                  font-weight="bold"
+                  fill="currentColor"
+                  font-family="Arial"
+                >
+                  N
+                </text>
+              </svg>
+              OneNote
+            </button>
+          </div>
         </div>
       </div>
 
@@ -574,10 +662,42 @@ onMounted(() => {
   border-top-right-radius: 4px;
 }
 
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
 .msg-time {
   font-size: 11px;
   color: #9ca3af;
-  padding: 0 4px;
+}
+
+.save-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  color: #9ca3af;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.save-action-btn:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  color: #6366f1;
+}
+
+.save-action-btn.onenote:hover {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #7719aa;
 }
 
 /* 光标闪烁 */
