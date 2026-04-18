@@ -83,7 +83,7 @@ const login = () => {
   }
 
   const redirectUri = `${backendUrl.value}/api/onenote/auth/callback`
-  const scopes = 'Notes.ReadWrite Notes.Read offline_access User.Read'
+  const scopes = 'Notes.ReadWrite.All'
 
   const authUrl =
     `https://login.microsoftonline.com/common/oauth2/v2.0/authorize` +
