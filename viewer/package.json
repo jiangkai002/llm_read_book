@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "api": "node src/swaggergen.cjs"
   },
   "dependencies": {
     "@embedpdf/vue-pdf-viewer": "^2.9.0",
@@ -27,8 +28,10 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "@vue/typescript-plugin": "~2.2.8",
+    "axios": "^1.15.0",
     "npm-run-all2": "^7.0.2",
     "prettier": "3.5.3",
+    "swagger-axios-codegen": "^0.18.1",
     "typescript": "~5.8.0",
     "vite": "^6.2.1",
     "vite-plugin-vue-devtools": "^7.7.2",
