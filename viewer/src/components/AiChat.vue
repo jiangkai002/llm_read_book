@@ -1,6 +1,25 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted } from 'vue'
 import { marked } from 'marked'
+import { LlmService, LLMAsk } from '@/api/index'
+import { syncApiClientFromStorage } from '@/api/client'
+
+/** 无截图时占位，满足后端多模态请求（1×1 透明 PNG） */
+const PLACEHOLDER_IMAGE_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
+function stripDataUrlBase64(dataUrl: string): string {
+  const m = dataUrl.match(/^data:image\/\w+;base64,(.+)$/i)
+  return m ? m[1] : dataUrl.replace(/^data:[^;]+;base64,/i, '')
+}
+
+/** 后端要求 OpenAI 兼容根路径，如 https://api.openai.com/v1 */
+function normalizeOpenAIBaseUrl(endpoint: string): string {
+  let u = endpoint.trim()
+  if (!u) return 'https://api.openai.com/v1'
+  u = u.replace(/\/chat\/completions\/?$/i, '').replace(/\/$/, '')
+  return u || 'https://api.openai.com/v1'
+}
 
 const props = defineProps<{
   screenshot?: string | null
@@ -20,9 +39,13 @@ interface Message {
 }
 
 interface ApiConfig {
+  /** 本机 FastAPI 等，如 http://localhost:8000 */
+  backendUrl: string
+  /** OpenAI 兼容 API 根地址，如 https://api.openai.com/v1 */
   endpoint: string
   apiKey: string
   model: string
+  bookName: string
 }
 
 const messages = ref<Message[]>([])
@@ -34,9 +57,16 @@ const chatContainerRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const apiConfig = ref<ApiConfig>({
-  endpoint: localStorage.getItem('ai_endpoint') || 'https://api.openai.com/v1/chat/completions',
+  backendUrl:
+    localStorage.getItem('ai_backend_url') ||
+    localStorage.getItem('onenote_backend_url') ||
+    'http://localhost:8000',
+  endpoint: normalizeOpenAIBaseUrl(
+    localStorage.getItem('ai_endpoint') || 'https://api.openai.com/v1'
+  ),
   apiKey: localStorage.getItem('ai_api_key') || '',
   model: localStorage.getItem('ai_model') || 'gpt-4o',
+  bookName: localStorage.getItem('ai_book_name') || '当前书籍',
 })
 
 watch(
@@ -57,9 +87,14 @@ watch(
 )
 
 const saveConfig = () => {
-  localStorage.setItem('ai_endpoint', apiConfig.value.endpoint)
+  const ep = normalizeOpenAIBaseUrl(apiConfig.value.endpoint)
+  apiConfig.value.endpoint = ep
+  localStorage.setItem('ai_backend_url', apiConfig.value.backendUrl.trim())
+  localStorage.setItem('ai_endpoint', ep)
   localStorage.setItem('ai_api_key', apiConfig.value.apiKey)
   localStorage.setItem('ai_model', apiConfig.value.model)
+  localStorage.setItem('ai_book_name', apiConfig.value.bookName.trim() || '当前书籍')
+  syncApiClientFromStorage()
   showConfig.value = false
 }
 
@@ -140,12 +175,21 @@ const sendMessage = async () => {
 
   try {
     if (apiConfig.value.apiKey && apiConfig.value.endpoint) {
-      await callLLM(text, image, assistantMsg)
+      await callBackendLLM(text, image, assistantMsg)
     } else {
       await simulateStream(assistantMsg)
     }
   } catch (err: any) {
-    assistantMsg.content = `请求失败：${err.message || '未知错误'}，请检查 API 配置。`
+    const detail = err?.response?.data
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail?.detail)
+          ? detail.detail.map((d: { msg?: string }) => d.msg || '').join('; ')
+          : detail?.detail != null
+            ? String(detail.detail)
+            : err?.message || '未知错误'
+    assistantMsg.content = `请求失败：${msg}。请确认后端已启动，并检查大模型 API 配置。`
   } finally {
     assistantMsg.isStreaming = false
     isLoading.value = false
@@ -153,73 +197,28 @@ const sendMessage = async () => {
   }
 }
 
-const buildApiMessages = (text: string, image: string | null) => {
-  const history = messages.value.slice(0, -1).map((msg) => {
-    if (msg.role === 'user' && msg.images?.length) {
-      return {
-        role: 'user',
-        content: [
-          ...(msg.content ? [{ type: 'text', text: msg.content }] : []),
-          { type: 'image_url', image_url: { url: msg.images[0] } },
-        ],
-      }
-    }
-    return { role: msg.role, content: msg.content }
+const callBackendLLM = async (text: string, image: string | null, target: Message) => {
+  syncApiClientFromStorage()
+  const imageBase64 = image ? stripDataUrlBase64(image) : PLACEHOLDER_IMAGE_BASE64
+  const question = text.trim() || (image ? '请结合截图内容回答。' : '请回答。')
+  const body = new LLMAsk({
+    book_name: apiConfig.value.bookName.trim() || '当前书籍',
+    question,
+    image_base64: imageBase64,
+    image_content: (props.selectedText?.trim() || '') as string,
+    api_key: apiConfig.value.apiKey,
+    base_url: normalizeOpenAIBaseUrl(apiConfig.value.endpoint),
+    model: apiConfig.value.model,
   })
-
-  const userContent: any[] = []
-  if (text) userContent.push({ type: 'text', text })
-  if (image) userContent.push({ type: 'image_url', image_url: { url: image } })
-  if (!text && image) userContent.unshift({ type: 'text', text: '请分析这张图片内容' })
-
-  history.push({
-    role: 'user',
-    content: userContent.length === 1 && !image ? userContent[0].text : (userContent as any),
-  })
-  return history
-}
-
-const callLLM = async (text: string, image: string | null, target: Message) => {
-  const response = await fetch(apiConfig.value.endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiConfig.value.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: apiConfig.value.model,
-      messages: buildApiMessages(text, image),
-      stream: true,
-    }),
-  })
-
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-  const reader = response.body!.getReader()
-  const decoder = new TextDecoder()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const chunk = decoder.decode(value)
-    for (const line of chunk.split('\n')) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6)
-      if (data === '[DONE]') break
-      try {
-        const delta = JSON.parse(data).choices?.[0]?.delta?.content
-        if (delta) {
-          target.content += delta
-          await scrollToBottom()
-        }
-      } catch {}
-    }
-  }
+  const res = await LlmService.llmAskApiLlmLlmAskPost({ body })
+  const out = typeof res === 'string' ? res : res == null ? '' : String(res)
+  target.content = out
+  await scrollToBottom()
 }
 
 const simulateStream = async (target: Message) => {
   const text =
-    '您好！当前处于**示例模式**（未配置 API Key）。\n\n请点击右上角 ⚙️ 按钮配置以下信息：\n- **API 端点**（如 OpenAI / 本地 Ollama）\n- **API Key**\n- **模型名称**\n\n配置完成后，您可以：\n1. 直接在输入框粘贴 PDF 中复制的文字进行提问\n2. 点击截图按钮截取 PDF 内容，截图会自动附加到输入框\n3. 按 **Enter** 发送，**Shift+Enter** 换行'
+    '您好！当前处于**示例模式**（未配置大模型密钥）。\n\n请点击右上角 ⚙️ 填写：\n- **后端地址**（默认 `http://localhost:8000`）\n- **OpenAI 兼容 base URL**（如 `https://api.openai.com/v1`）\n- **API Key** 与 **模型名称**\n- **书名**（可选，用于读书场景提示）\n\n请求会经后端 `POST /api/llm/llm_ask` 转发至大模型。配置完成后即可截图或输入文字提问。'
   for (const char of text) {
     target.content += char
     await new Promise((r) => setTimeout(r, 15))
@@ -259,7 +258,7 @@ onMounted(() => {
     id: '0',
     role: 'assistant',
     content:
-      '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置 API 信息。',
+      '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置后端地址与大模型 API（经服务端转发）。',
     timestamp: new Date(),
   })
 })
@@ -329,10 +328,14 @@ onMounted(() => {
     <transition name="slide">
       <div v-if="showConfig" class="config-panel">
         <div class="config-row">
-          <label>API 端点</label>
+          <label>后端地址</label>
+          <input v-model="apiConfig.backendUrl" placeholder="http://localhost:8000" />
+        </div>
+        <div class="config-row">
+          <label>大模型 Base URL</label>
           <input
             v-model="apiConfig.endpoint"
-            placeholder="https://api.openai.com/v1/chat/completions"
+            placeholder="https://api.openai.com/v1"
           />
         </div>
         <div class="config-row">
@@ -342,6 +345,10 @@ onMounted(() => {
         <div class="config-row">
           <label>模型</label>
           <input v-model="apiConfig.model" placeholder="gpt-4o" />
+        </div>
+        <div class="config-row">
+          <label>书名</label>
+          <input v-model="apiConfig.bookName" placeholder="当前阅读的书名" />
         </div>
         <button class="save-btn" @click="saveConfig">保存配置</button>
       </div>

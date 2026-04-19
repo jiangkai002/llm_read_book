@@ -84,10 +84,7 @@ async function idbLoad(): Promise<FileSystemDirectoryHandle | null> {
 
 // ── 目录扫描 ──
 
-async function scanDir(
-  handle: FileSystemDirectoryHandle,
-  basePath = '',
-): Promise<MdFile[]> {
+async function scanDir(handle: FileSystemDirectoryHandle, basePath = ''): Promise<MdFile[]> {
   const result: MdFile[] = []
   for await (const entry of (handle as any).values()) {
     const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name
@@ -327,19 +324,46 @@ onUnmounted(() => {
     <div class="toolbar">
       <div class="toolbar-left">
         <button class="tool-btn" title="选择笔记目录" @click="selectDirectory">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </button>
         <button class="tool-btn" title="刷新文件列表" :disabled="!dirHandle" @click="refreshFiles">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <polyline points="23 4 23 10 17 10" />
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
           </svg>
         </button>
         <div class="separator" />
         <button class="tool-btn" title="新建文件" :disabled="!dirHandle" @click="startNewFile">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="12" y1="18" x2="12" y2="12" />
@@ -347,28 +371,79 @@ onUnmounted(() => {
           </svg>
         </button>
         <button class="tool-btn" title="保存 (Ctrl+S)" :disabled="!currentFile" @click="saveFile">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
             <polyline points="17 21 17 13 7 13 7 21" />
             <polyline points="7 3 7 8 15 8" />
           </svg>
         </button>
         <div class="separator" />
-        <button class="tool-btn" :class="{ active: !isPreview }" title="编辑" @click="isPreview = false">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button
+          class="tool-btn"
+          :class="{ active: !isPreview }"
+          title="编辑"
+          @click="isPreview = false"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
         </button>
-        <button class="tool-btn" :class="{ active: isPreview }" title="预览" @click="isPreview = true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button
+          class="tool-btn"
+          :class="{ active: isPreview }"
+          title="预览"
+          @click="isPreview = true"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
         <div class="separator" />
-        <button class="tool-btn" :class="{ active: showSidebar }" title="文件列表" @click="showSidebar = !showSidebar">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button
+          class="tool-btn"
+          :class="{ active: showSidebar }"
+          title="文件列表"
+          @click="showSidebar = !showSidebar"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
@@ -397,11 +472,7 @@ onUnmounted(() => {
       <transition name="slide-sidebar">
         <div v-show="showSidebar && dirHandle" class="file-sidebar">
           <div class="sidebar-search">
-            <input
-              v-model="searchQuery"
-              class="search-input"
-              placeholder="搜索文件..."
-            />
+            <input v-model="searchQuery" class="search-input" placeholder="搜索文件..." />
           </div>
 
           <!-- 新建文件输入 -->
@@ -430,7 +501,15 @@ onUnmounted(() => {
               :title="file.path"
               @click="openFile(file)"
             >
-              <svg class="file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                class="file-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
@@ -439,8 +518,16 @@ onUnmounted(() => {
                 <span v-if="file.path.includes('/')" class="file-item-path">{{ file.path }}</span>
               </div>
               <button class="file-delete-btn" title="删除" @click.stop="deleteFile(file)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
@@ -451,7 +538,16 @@ onUnmounted(() => {
       <!-- 未选择目录提示 -->
       <div v-if="!dirHandle" class="empty-state">
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#d1d5db"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </div>
@@ -483,7 +579,9 @@ onUnmounted(() => {
     <!-- 底部状态栏 -->
     <div class="status-bar">
       <span v-if="dirHandle">{{ files.length }} 个文件</span>
-      <span v-if="currentFile">{{ content.length }} 字符 · {{ content.split('\n').length }} 行</span>
+      <span v-if="currentFile"
+        >{{ content.length }} 字符 · {{ content.split('\n').length }} 行</span
+      >
       <span v-if="isDirty" class="unsaved-hint">未保存</span>
     </div>
   </div>
@@ -537,7 +635,9 @@ onUnmounted(() => {
   border-radius: 5px;
   cursor: pointer;
   color: #6b7280;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tool-btn:hover:not(:disabled) {
@@ -633,7 +733,9 @@ onUnmounted(() => {
 
 .slide-sidebar-enter-active,
 .slide-sidebar-leave-active {
-  transition: width 0.2s ease, opacity 0.15s ease;
+  transition:
+    width 0.2s ease,
+    opacity 0.15s ease;
 }
 .slide-sidebar-enter-from,
 .slide-sidebar-leave-to {

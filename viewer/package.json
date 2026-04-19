@@ -13,6 +13,7 @@
     "api": "node src/swaggergen.cjs"
   },
   "dependencies": {
+    "axios": "^1.15.0",
     "@embedpdf/vue-pdf-viewer": "^2.9.0",
     "@types/marked": "^6.0.0",
     "marked": "^15.0.7",
@@ -28,7 +29,6 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "@vue/typescript-plugin": "~2.2.8",
-    "axios": "^1.15.0",
     "npm-run-all2": "^7.0.2",
     "prettier": "3.5.3",
     "swagger-axios-codegen": "^0.18.1",

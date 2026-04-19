@@ -108,7 +108,7 @@ export class LlmService {
   /**
    * 读书场景多模态问答
    */
-  static llmAskLlmLlmAskPost(
+  static llmAskApiLlmLlmAskPost(
     params: {
       /** requestBody */
       body?: LLMAsk;
@@ -116,13 +116,152 @@ export class LlmService {
     options: IRequestOptions = {}
   ): Promise<any | null> {
     return new Promise((resolve, reject) => {
-      let url = basePath + '/llm/llm_ask';
+      let url = basePath + '/api/llm/llm_ask';
 
       const configs: IRequestConfig = getConfigs('post', 'application/json', url, options);
 
       let data = params.body;
 
       configs.data = data;
+
+      axios(configs, resolve, reject);
+    });
+  }
+}
+
+export class OneNoteService {
+  /**
+   * Onenote Auth Status
+   */
+  static onenoteAuthStatusApiOnenoteAuthStatusGet(options: IRequestOptions = {}): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/auth/status';
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Auth Logout
+   */
+  static onenoteAuthLogoutApiOnenoteAuthLogoutPost(options: IRequestOptions = {}): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/auth/logout';
+
+      const configs: IRequestConfig = getConfigs('post', 'application/json', url, options);
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Auth Callback
+   */
+  static onenoteAuthCallbackApiOnenoteAuthCallbackGet(
+    params: {
+      /**  */
+      code?: string;
+      /**  */
+      state?: string;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/auth/callback';
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
+      configs.params = { code: params['code'], state: params['state'] };
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Notebooks
+   */
+  static onenoteNotebooksApiOnenoteNotebooksGet(options: IRequestOptions = {}): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/notebooks';
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Sections
+   */
+  static onenoteSectionsApiOnenoteSectionsGet(
+    params: {
+      /**  */
+      notebookId: string;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/sections';
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
+      configs.params = { notebook_id: params['notebookId'] };
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Pages
+   */
+  static onenotePagesApiOnenotePagesGet(
+    params: {
+      /**  */
+      sectionId: string;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/pages';
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
+      configs.params = { section_id: params['sectionId'] };
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Create Page
+   */
+  static onenoteCreatePageApiOnenotePagesPost(
+    params: {
+      /** requestBody */
+      body?: OneNoteCreatePageRequest;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/pages';
+
+      const configs: IRequestConfig = getConfigs('post', 'application/json', url, options);
+
+      let data = params.body;
+
+      configs.data = data;
+
+      axios(configs, resolve, reject);
+    });
+  }
+  /**
+   * Onenote Page Content
+   */
+  static onenotePageContentApiOnenotePagesPageIdContentGet(
+    params: {
+      /**  */
+      pageId: string;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/onenote/pages/{page_id}/content';
+      url = url.replace('{page_id}', params['pageId'] + '');
+
+      const configs: IRequestConfig = getConfigs('get', 'application/json', url, options);
 
       axios(configs, resolve, reject);
     });
