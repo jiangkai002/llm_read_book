@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import onenoteTabIcon from '@/assets/onenote_icon.svg'
 import PdfViewer from '@/components/PdfViewer.vue'
 import AiChat from '@/components/AiChat.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
@@ -50,7 +51,7 @@ const toggleChat = () => {
 <template>
   <div class="app">
     <div class="pdf-area" :class="{ expanded: chatCollapsed }">
-      <PdfViewer url="/jgs.pdf" id="pdf" @ready="onPdfReady" />
+      <PdfViewer url="/test.pdf" id="pdf" @ready="onPdfReady" />
     </div>
 
     <button class="collapse-btn" :class="{ collapsed: chatCollapsed }" @click="toggleChat">
@@ -119,26 +120,13 @@ const toggleChat = () => {
             :class="{ active: activeTab === 'onenote' }"
             @click="activeTab = 'onenote'"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24">
-              <rect
-                width="24"
-                height="24"
-                rx="4"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
-              <text
-                x="6"
-                y="17"
-                font-size="13"
-                font-weight="bold"
-                fill="currentColor"
-                font-family="Arial"
-              >
-                N
-              </text>
-            </svg>
+            <img
+              class="panel-tab-onenote-icon"
+              :src="onenoteTabIcon"
+              alt=""
+              width="14"
+              height="14"
+            />
             OneNote
           </button>
         </div>
@@ -193,7 +181,10 @@ const toggleChat = () => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: right 0.3s ease, background 0.15s, color 0.15s;
+  transition:
+    right 0.3s ease,
+    background 0.15s,
+    color 0.15s;
   box-shadow: -2px 0 6px rgba(0, 0, 0, 0.06);
 }
 
@@ -236,7 +227,9 @@ const toggleChat = () => {
   font-weight: 500;
   color: #9ca3af;
   cursor: pointer;
-  transition: color 0.15s, box-shadow 0.15s;
+  transition:
+    color 0.15s,
+    box-shadow 0.15s;
   position: relative;
 }
 
@@ -249,6 +242,12 @@ const toggleChat = () => {
   box-shadow: inset 0 -2px 0 #6366f1;
 }
 
+.panel-tab-onenote-icon {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
 .panel-content {
   flex: 1;
   overflow: hidden;
@@ -256,7 +255,9 @@ const toggleChat = () => {
 
 .slide-chat-enter-active,
 .slide-chat-leave-active {
-  transition: flex 0.3s ease, opacity 0.2s ease;
+  transition:
+    flex 0.3s ease,
+    opacity 0.2s ease;
 }
 
 .slide-chat-enter-from,

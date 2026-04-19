@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
+import onenoteLogo from '@/assets/onenote.png'
 
 interface Notebook {
   id: string
@@ -63,7 +64,7 @@ const saveConfig = () => {
 const api = async (path: string, options: RequestInit = {}) => {
   const res = await fetch(`${backendUrl.value}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers as any },
+    headers: { 'Content-Type': 'application/json', ...(options.headers as any) },
     ...options,
   })
   if (!res.ok) {
@@ -321,7 +322,9 @@ onUnmounted(() => {
       <div class="toolbar-left">
         <svg class="onenote-logo" width="18" height="18" viewBox="0 0 24 24">
           <rect width="24" height="24" rx="4" fill="#7719AA" />
-          <text x="5" y="18" font-size="15" font-weight="bold" fill="white" font-family="Arial">N</text>
+          <text x="5" y="18" font-size="15" font-weight="bold" fill="white" font-family="Arial">
+            N
+          </text>
         </svg>
         <span class="toolbar-title">OneNote</span>
       </div>
@@ -331,9 +334,18 @@ onUnmounted(() => {
         </transition>
         <span v-if="userName" class="user-badge" :title="userName">{{ userName }}</span>
         <button class="tool-btn" title="配置" @click="showConfig = !showConfig">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
           </svg>
         </button>
       </div>
@@ -351,7 +363,12 @@ onUnmounted(() => {
           <input v-model="clientId" placeholder="Azure AD 应用的 Client ID" />
         </div>
         <div class="config-hint">
-          需要在 <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">Azure Portal</a>
+          需要在
+          <a
+            href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+            target="_blank"
+            >Azure Portal</a
+          >
           注册应用并配置回调地址为：<code>{{ backendUrl }}/api/onenote/auth/callback</code>
         </div>
         <button class="save-btn" @click="saveConfig">保存配置</button>
@@ -363,15 +380,21 @@ onUnmounted(() => {
       <!-- 未登录 -->
       <div v-if="!isAuthenticated" class="empty-state">
         <div class="empty-icon">
-          <svg width="52" height="52" viewBox="0 0 24 24">
-            <rect width="24" height="24" rx="4" fill="#ede9fe" stroke="#7719AA" stroke-width="0.5" />
-            <text x="5" y="18" font-size="15" font-weight="bold" fill="#7719AA" font-family="Arial">N</text>
-          </svg>
+          <img :src="onenoteLogo" alt="OneNote" />
         </div>
         <p class="empty-title">连接 OneNote</p>
         <p class="empty-desc">登录 Microsoft 账号后，可以直接将 AI 生成的笔记保存到 OneNote</p>
         <button class="login-btn" @click="login">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
             <polyline points="10 17 15 12 10 7" />
             <line x1="15" y1="12" x2="3" y2="12" />
@@ -388,11 +411,15 @@ onUnmounted(() => {
           <span class="crumb clickable" @click="goBackToNotebooks">笔记本</span>
           <template v-if="selectedNotebook">
             <span class="crumb-sep">›</span>
-            <span class="crumb" :class="{ clickable: selectedSection }" @click="goBackToSections">{{ selectedNotebook.displayName }}</span>
+            <span class="crumb" :class="{ clickable: selectedSection }" @click="goBackToSections">{{
+              selectedNotebook.displayName
+            }}</span>
           </template>
           <template v-if="selectedSection">
             <span class="crumb-sep">›</span>
-            <span class="crumb" :class="{ clickable: selectedPage }" @click="goBackToPages">{{ selectedSection.displayName }}</span>
+            <span class="crumb" :class="{ clickable: selectedPage }" @click="goBackToPages">{{
+              selectedSection.displayName
+            }}</span>
           </template>
           <template v-if="selectedPage">
             <span class="crumb-sep">›</span>
@@ -400,9 +427,21 @@ onUnmounted(() => {
           </template>
 
           <div class="breadcrumb-actions">
-            <button v-if="selectedSection && !selectedPage && !showCreatePanel" class="small-btn" @click="openCreatePanel">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            <button
+              v-if="selectedSection && !selectedPage && !showCreatePanel"
+              class="small-btn"
+              @click="openCreatePanel"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
               新建页面
             </button>
@@ -418,9 +457,27 @@ onUnmounted(() => {
           <div class="create-header">
             <input v-model="createTitle" class="create-title-input" placeholder="页面标题" />
             <div class="create-actions">
-              <button class="small-btn" :class="{ active: viewMode === 'edit' }" @click="viewMode = 'edit'">编辑</button>
-              <button class="small-btn" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">预览</button>
-              <button class="small-btn primary" :disabled="!createTitle.trim() || isLoading" @click="createPage">保存</button>
+              <button
+                class="small-btn"
+                :class="{ active: viewMode === 'edit' }"
+                @click="viewMode = 'edit'"
+              >
+                编辑
+              </button>
+              <button
+                class="small-btn"
+                :class="{ active: viewMode === 'preview' }"
+                @click="viewMode = 'preview'"
+              >
+                预览
+              </button>
+              <button
+                class="small-btn primary"
+                :disabled="!createTitle.trim() || isLoading"
+                @click="createPage"
+              >
+                保存
+              </button>
               <button class="small-btn" @click="showCreatePanel = false">取消</button>
             </div>
           </div>
@@ -442,18 +499,31 @@ onUnmounted(() => {
           <!-- 笔记本列表 -->
           <template v-if="!selectedNotebook">
             <div v-if="notebooks.length === 0 && !isLoading" class="list-empty">暂无笔记本</div>
-            <div
-              v-for="nb in notebooks"
-              :key="nb.id"
-              class="list-item"
-              @click="selectNotebook(nb)"
-            >
-              <svg class="item-icon notebook" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <div v-for="nb in notebooks" :key="nb.id" class="list-item" @click="selectNotebook(nb)">
+              <svg
+                class="item-icon notebook"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               </svg>
               <span class="item-name">{{ nb.displayName }}</span>
-              <svg class="item-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+              <svg
+                class="item-arrow"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </div>
           </template>
 
@@ -466,33 +536,66 @@ onUnmounted(() => {
               class="list-item"
               @click="selectSection(sec)"
             >
-              <svg class="item-icon section" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <svg
+                class="item-icon section"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <line x1="9" y1="3" x2="9" y2="21" />
               </svg>
               <span class="item-name">{{ sec.displayName }}</span>
-              <svg class="item-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+              <svg
+                class="item-arrow"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </div>
           </template>
 
           <!-- 页面列表 -->
           <template v-else>
             <div v-if="pages.length === 0 && !isLoading" class="list-empty">暂无页面</div>
-            <div
-              v-for="p in pages"
-              :key="p.id"
-              class="list-item"
-              @click="selectPage(p)"
-            >
-              <svg class="item-icon page" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <div v-for="p in pages" :key="p.id" class="list-item" @click="selectPage(p)">
+              <svg
+                class="item-icon page"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
               <div class="item-info">
                 <span class="item-name">{{ p.title || '无标题' }}</span>
-                <span class="item-date">{{ new Date(p.createdDateTime).toLocaleDateString('zh-CN') }}</span>
+                <span class="item-date">{{
+                  new Date(p.createdDateTime).toLocaleDateString('zh-CN')
+                }}</span>
               </div>
-              <svg class="item-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+              <svg
+                class="item-arrow"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </div>
           </template>
         </div>
@@ -562,7 +665,9 @@ onUnmounted(() => {
   border-radius: 5px;
   cursor: pointer;
   color: #6b7280;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tool-btn:hover {
@@ -572,7 +677,7 @@ onUnmounted(() => {
 
 .user-badge {
   font-size: 11px;
-  color: #7719AA;
+  color: #7719aa;
   background: #f3e8ff;
   padding: 2px 7px;
   border-radius: 4px;
@@ -630,7 +735,7 @@ onUnmounted(() => {
 }
 
 .config-row input:focus {
-  border-color: #7719AA;
+  border-color: #7719aa;
   box-shadow: 0 0 0 2px rgba(119, 25, 170, 0.12);
 }
 
@@ -642,7 +747,7 @@ onUnmounted(() => {
 }
 
 .config-hint a {
-  color: #7719AA;
+  color: #7719aa;
 }
 
 .config-hint code {
@@ -650,13 +755,13 @@ onUnmounted(() => {
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 11px;
-  color: #7719AA;
+  color: #7719aa;
 }
 
 .save-btn {
   width: 100%;
   padding: 7px;
-  background: #7719AA;
+  background: #7719aa;
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -711,6 +816,15 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 
+.empty-icon img {
+  display: block;
+  max-width: 80px;
+  max-height: 80px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .empty-title {
   font-size: 16px;
   font-weight: 600;
@@ -733,14 +847,16 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 8px;
   padding: 10px 24px;
-  background: #7719AA;
+  background: #7719aa;
   color: #fff;
   border: none;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
 }
 
 .login-btn:hover {
@@ -759,7 +875,7 @@ onUnmounted(() => {
 }
 
 .config-link:hover {
-  color: #7719AA;
+  color: #7719aa;
 }
 
 /* ── 浏览器 ── */
@@ -789,7 +905,7 @@ onUnmounted(() => {
 
 .crumb.clickable {
   cursor: pointer;
-  color: #7719AA;
+  color: #7719aa;
 }
 
 .crumb.clickable:hover {
@@ -834,12 +950,12 @@ onUnmounted(() => {
 .small-btn.active {
   background: #f3e8ff;
   border-color: #d8b4fe;
-  color: #7719AA;
+  color: #7719aa;
 }
 
 .small-btn.primary {
-  background: #7719AA;
-  border-color: #7719AA;
+  background: #7719aa;
+  border-color: #7719aa;
   color: #fff;
 }
 
@@ -873,13 +989,17 @@ onUnmounted(() => {
 .loading-bar-inner {
   height: 100%;
   width: 30%;
-  background: #7719AA;
+  background: #7719aa;
   animation: loading-slide 1.2s ease-in-out infinite;
 }
 
 @keyframes loading-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
 }
 
 /* ── 列表 ── */
@@ -923,7 +1043,7 @@ onUnmounted(() => {
 }
 
 .item-icon.notebook {
-  color: #7719AA;
+  color: #7719aa;
 }
 
 .item-icon.section {
@@ -990,7 +1110,7 @@ onUnmounted(() => {
 }
 
 .create-title-input:focus {
-  border-color: #7719AA;
+  border-color: #7719aa;
   box-shadow: 0 0 0 2px rgba(119, 25, 170, 0.12);
 }
 
@@ -1081,7 +1201,7 @@ onUnmounted(() => {
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.88em;
-  color: #7719AA;
+  color: #7719aa;
 }
 .markdown-body :deep(pre) {
   background: #1e1e2e;
@@ -1098,7 +1218,7 @@ onUnmounted(() => {
   padding: 0;
 }
 .markdown-body :deep(blockquote) {
-  border-left: 3px solid #7719AA;
+  border-left: 3px solid #7719aa;
   padding-left: 10px;
   color: #6b7280;
   margin: 8px 0;

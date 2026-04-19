@@ -26,6 +26,7 @@
     "@types/pdfjs-dist": "^2.10.378",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
+    "@vue/typescript-plugin": "~2.2.8",
     "npm-run-all2": "^7.0.2",
     "prettier": "3.5.3",
     "typescript": "~5.8.0",
