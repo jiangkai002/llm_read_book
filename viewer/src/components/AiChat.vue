@@ -5,8 +5,7 @@ import { LlmService, LLMAsk } from '@/api/index'
 import { syncApiClientFromStorage } from '@/api/client'
 
 /** 无截图时占位，满足后端多模态请求（1×1 透明 PNG） */
-const PLACEHOLDER_IMAGE_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const PLACEHOLDER_IMAGE_BASE64 = ''
 
 function stripDataUrlBase64(dataUrl: string): string {
   const m = dataUrl.match(/^data:image\/\w+;base64,(.+)$/i)
@@ -51,6 +50,11 @@ interface ApiConfig {
 const messages = ref<Message[]>([])
 const inputText = ref('')
 const attachedImage = ref<string | null>(null)
+/** 有截图时是否把截图送入多模态模型（与后端 use_image 对应） */
+const useImageUnderstanding = ref(localStorage.getItem('ai_use_image') !== 'false')
+const persistUseImagePreference = () => {
+  localStorage.setItem('ai_use_image', useImageUnderstanding.value ? 'true' : 'false')
+}
 const isLoading = ref(false)
 const showConfig = ref(false)
 const chatContainerRef = ref<HTMLElement | null>(null)
@@ -62,7 +66,7 @@ const apiConfig = ref<ApiConfig>({
     localStorage.getItem('onenote_backend_url') ||
     'http://localhost:8000',
   endpoint: normalizeOpenAIBaseUrl(
-    localStorage.getItem('ai_endpoint') || 'https://api.openai.com/v1'
+    localStorage.getItem('ai_endpoint') || 'https://api.openai.com/v1',
   ),
   apiKey: localStorage.getItem('ai_api_key') || '',
   model: localStorage.getItem('ai_model') || 'gpt-4o',
@@ -73,7 +77,7 @@ watch(
   () => props.screenshot,
   (val) => {
     if (val) attachedImage.value = val
-  }
+  },
 )
 
 watch(
@@ -83,7 +87,7 @@ watch(
       inputText.value = val
       nextTick(() => textareaRef.value?.focus())
     }
-  }
+  },
 )
 
 const saveConfig = () => {
@@ -150,6 +154,8 @@ const sendMessage = async () => {
   if (!text && !image) return
   if (isLoading.value) return
 
+  const useImageForRequest = !!(image && useImageUnderstanding.value)
+
   const userMsg: Message = {
     id: Date.now().toString(),
     role: 'user',
@@ -175,7 +181,7 @@ const sendMessage = async () => {
 
   try {
     if (apiConfig.value.apiKey && apiConfig.value.endpoint) {
-      await callBackendLLM(text, image, assistantMsg)
+      await callBackendLLM(text, image, assistantMsg, useImageForRequest)
     } else {
       await simulateStream(assistantMsg)
     }
@@ -197,11 +203,17 @@ const sendMessage = async () => {
   }
 }
 
-const callBackendLLM = async (text: string, image: string | null, target: Message) => {
+const callBackendLLM = async (
+  text: string,
+  image: string | null,
+  target: Message,
+  useImage: boolean,
+) => {
   syncApiClientFromStorage()
   const imageBase64 = image ? stripDataUrlBase64(image) : PLACEHOLDER_IMAGE_BASE64
   const question = text.trim() || (image ? '请结合截图内容回答。' : '请回答。')
   const body = new LLMAsk({
+    use_image: useImage,
     book_name: apiConfig.value.bookName.trim() || '当前书籍',
     question,
     image_base64: imageBase64,
@@ -328,15 +340,8 @@ onMounted(() => {
     <transition name="slide">
       <div v-if="showConfig" class="config-panel">
         <div class="config-row">
-          <label>后端地址</label>
-          <input v-model="apiConfig.backendUrl" placeholder="http://localhost:8000" />
-        </div>
-        <div class="config-row">
           <label>大模型 Base URL</label>
-          <input
-            v-model="apiConfig.endpoint"
-            placeholder="https://api.openai.com/v1"
-          />
+          <input v-model="apiConfig.endpoint" placeholder="https://api.openai.com/v1" />
         </div>
         <div class="config-row">
           <label>API Key</label>
@@ -478,6 +483,22 @@ onMounted(() => {
         </button>
       </div>
 
+      <label
+        class="use-image-option"
+        :class="{ 'is-disabled': !attachedImage }"
+        :title="
+          attachedImage ? '关闭后仅根据文字与选区说明回答，不读取截图像素' : '请先附加截图后再开启'
+        "
+      >
+        <input
+          v-model="useImageUnderstanding"
+          type="checkbox"
+          :disabled="!attachedImage"
+          @change="persistUseImagePreference"
+        />
+        <span>启用图片理解</span>
+      </label>
+
       <div class="input-hint">Enter 发送 · Shift+Enter 换行 · 可直接粘贴截图</div>
     </div>
   </div>
@@ -531,7 +552,9 @@ onMounted(() => {
   border-radius: 6px;
   cursor: pointer;
   color: #6b7280;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .icon-btn:hover {
   background: #f3f4f6;
@@ -794,6 +817,31 @@ onMounted(() => {
   align-items: flex-end;
   gap: 8px;
 }
+
+.use-image-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #4b5563;
+  cursor: pointer;
+  user-select: none;
+}
+.use-image-option input {
+  width: 14px;
+  height: 14px;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+.use-image-option.is-disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.use-image-option.is-disabled input {
+  cursor: not-allowed;
+}
+
 textarea {
   flex: 1;
   resize: none;
@@ -806,7 +854,9 @@ textarea {
   outline: none;
   color: #111;
   background: #f9fafb;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   max-height: 160px;
   overflow-y: auto;
 }
@@ -831,7 +881,9 @@ textarea::placeholder {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
 }
 .send-btn:hover:not(:disabled) {
   background: #4f46e5;

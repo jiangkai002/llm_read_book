@@ -298,6 +298,9 @@ export class LLMAsk {
   /** API 根地址，例如 https:\/\/api.openai.com\/v1 */
   'base_url': string;
 
+  /** 是否使用图片理解 */
+  'use_image': boolean;
+
   /** 模型名称，可选支持 vision \/ 多模态 */
   'model': string;
 
