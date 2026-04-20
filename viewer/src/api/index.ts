@@ -104,6 +104,31 @@ export class PagedResultDto<T = any> implements IPagedResult<T> {
 // customer definition
 // empty
 
+export class AuthService {
+  /**
+   * 用户登录
+   */
+  static loginApiAuthLoginPost(
+    params: {
+      /** requestBody */
+      body?: Body_login_api_auth_login_post;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/auth/login';
+
+      const configs: IRequestConfig = getConfigs('post', 'application/x-www-form-urlencoded', url, options);
+
+      let data = params.body;
+
+      configs.data = data;
+
+      axios(configs, resolve, reject);
+    });
+  }
+}
+
 export class LlmService {
   /**
    * 读书场景多模态问答
@@ -265,6 +290,84 @@ export class OneNoteService {
 
       axios(configs, resolve, reject);
     });
+  }
+}
+
+export class GenerateNoteService {
+  /**
+   * 生成笔记
+   */
+  static generateNoteApiGenerateNoteGenerateNotePost(
+    params: {
+      /** requestBody */
+      body?: GenerateNote;
+    } = {} as any,
+    options: IRequestOptions = {}
+  ): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let url = basePath + '/api/generate_note/generate_note';
+
+      const configs: IRequestConfig = getConfigs('post', 'application/json', url, options);
+
+      let data = params.body;
+
+      configs.data = data;
+
+      axios(configs, resolve, reject);
+    });
+  }
+}
+
+/** Body_login_api_auth_login_post */
+export class Body_login_api_auth_login_post {
+  /**  */
+  'grant_type'?: any | null;
+
+  /**  */
+  'username': string;
+
+  /**  */
+  'password': string;
+
+  /**  */
+  'scope'?: string;
+
+  /**  */
+  'client_id'?: any | null;
+
+  /**  */
+  'client_secret'?: any | null;
+
+  constructor(data: Body_login_api_auth_login_post = {}) {
+    Object.assign(this, data);
+  }
+}
+
+/** GenerateNote */
+export class GenerateNote {
+  /**  */
+  'book_name': string;
+
+  /**  */
+  'question': string;
+
+  /**  */
+  'history_chat_list': string[];
+
+  /**  */
+  'api_key': string;
+
+  /**  */
+  'base_url': string;
+
+  /**  */
+  'model': string;
+
+  /**  */
+  'images': string[];
+
+  constructor(data: GenerateNote = {}) {
+    Object.assign(this, data);
   }
 }
 

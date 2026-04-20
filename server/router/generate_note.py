@@ -6,7 +6,8 @@ import json
 
 from auth.jwt_handler import get_current_user
 
-generate_note_router = APIRouter(prefix="/generate_note")
+generate_note_router = APIRouter(prefix="/api/generate_note",
+                                 tags=["Generate Note"])
 
 
 class GenerateNote(BaseModel):
@@ -19,8 +20,12 @@ class GenerateNote(BaseModel):
     images: list[str]
 
 
-@generate_note_router.post("/generate_note")
-async def generate_note(generate_note: GenerateNote, _: str = Depends(get_current_user)) -> Optional[str]:
+@generate_note_router.post("/generate_note",
+                           summary="生成笔记",
+                           description="根据书名、用户问题、历史聊天记录、图片生成笔记")
+async def generate_note(
+    generate_note: GenerateNote, _: str = Depends(get_current_user)
+) -> Optional[str]:
     prompt = f"你是{generate_note.book_name}的阅读助手，用户遇到一个问题进行了询问，并想根据书的内容进行笔记的生成。"
     prompt += f"用户的问题是：{generate_note.question}"
     prompt += f"用户的历史聊天记录是：{generate_note.history_chat_list}"
