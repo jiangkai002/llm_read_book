@@ -1,8 +1,10 @@
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
+
+from auth.jwt_handler import get_current_user
 
 llm_ask_router = APIRouter(prefix="/api/llm", tags=["LLM"])
 
@@ -27,7 +29,7 @@ class LLMAsk(BaseModel):
                  "结合截图中的书本内容给出解答。请求体为 OpenAI 兼容服务的连接参数与上下文。"),
     response_description="模型返回的 assistant 文本内容",
 )
-async def llm_ask(payload: LLMAsk) -> Optional[str]:
+async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Optional[str]:
 
     prompt = f"""
     你是一个专业的计算机领域的专家，现在用户正在阅读一本名为{payload.book_name}的书，用户现在遇到了一个问题，请你根据书中的内容以及用户的问题，给出详细的解答。

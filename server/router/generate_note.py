@@ -1,8 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
 from openai import AsyncOpenAI
 import json
+
+from auth.jwt_handler import get_current_user
 
 generate_note_router = APIRouter(prefix="/generate_note")
 
@@ -18,7 +20,7 @@ class GenerateNote(BaseModel):
 
 
 @generate_note_router.post("/generate_note")
-async def generate_note(generate_note: GenerateNote) -> Optional[str]:
+async def generate_note(generate_note: GenerateNote, _: str = Depends(get_current_user)) -> Optional[str]:
     prompt = f"你是{generate_note.book_name}的阅读助手，用户遇到一个问题进行了询问，并想根据书的内容进行笔记的生成。"
     prompt += f"用户的问题是：{generate_note.question}"
     prompt += f"用户的历史聊天记录是：{generate_note.history_chat_list}"
