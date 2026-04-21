@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
-import onenoteLogo from '@/assets/onenote.png'
 
 interface Notebook {
   id: string
@@ -380,7 +379,10 @@ onUnmounted(() => {
       <!-- 未登录 -->
       <div v-if="!isAuthenticated" class="empty-state">
         <div class="empty-icon">
-          <img :src="onenoteLogo" alt="OneNote" />
+          <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true">
+            <rect width="24" height="24" rx="4" fill="#ede9fe" stroke="#7719AA" stroke-width="0.5" />
+            <text x="5" y="18" font-size="15" font-weight="bold" fill="#7719AA" font-family="Arial">N</text>
+          </svg>
         </div>
         <p class="empty-title">连接 OneNote</p>
         <p class="empty-desc">登录 Microsoft 账号后，可以直接将 AI 生成的笔记保存到 OneNote</p>

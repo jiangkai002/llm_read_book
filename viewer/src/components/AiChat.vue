@@ -384,12 +384,7 @@ onMounted(() => {
           <div class="msg-meta">
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
             <button
-              v-if="
-                msg.role === 'assistant' &&
-                msg.content &&
-                !msg.isStreaming &&
-                props.onSaveAsMarkdown
-              "
+
               class="save-action-btn"
               title="保存为 Markdown 文件"
               @click="saveToMarkdown(msg)"
