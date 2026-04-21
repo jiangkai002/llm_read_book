@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
+import directoryIcon from '@/assets/markdown/directoryIcon.svg'
+import refreshIcon from '@/assets/markdown/refreshIcon.svg'
 
 interface MdFile {
   name: string
@@ -324,33 +326,10 @@ onUnmounted(() => {
     <div class="toolbar">
       <div class="toolbar-left">
         <button class="tool-btn" title="选择笔记目录" @click="selectDirectory">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
+          <img :src="directoryIcon" alt="" width="15" height="15" />
         </button>
         <button class="tool-btn" title="刷新文件列表" :disabled="!dirHandle" @click="refreshFiles">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+          <img :src="refreshIcon" alt="" width="15" height="15" />
         </button>
         <div class="separator" />
         <button class="tool-btn" title="新建文件" :disabled="!dirHandle" @click="startNewFile">

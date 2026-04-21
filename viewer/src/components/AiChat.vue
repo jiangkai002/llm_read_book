@@ -3,6 +3,8 @@ import { ref, nextTick, watch, onMounted } from 'vue'
 import { marked } from 'marked'
 import { LlmService, LLMAsk } from '@/api/index'
 import { syncApiClientFromStorage } from '@/api/client'
+import onenoteIcon from '@/assets/onenote_icon.svg'
+import mdIcon from '@/assets/markdown_icon.svg'
 
 /** 无截图时占位，满足后端多模态请求（1×1 透明 PNG） */
 const PLACEHOLDER_IMAGE_BASE64 = ''
@@ -384,25 +386,12 @@ onMounted(() => {
           <div class="msg-meta">
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
             <button
-
               class="save-action-btn"
               title="保存为 Markdown 文件"
               @click="saveToMarkdown(msg)"
             >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              .md
+              <img class="save-action-icon" :src="mdIcon" alt="" />
+              Markdown
             </button>
             <button
               v-if="
@@ -412,26 +401,7 @@ onMounted(() => {
               title="保存到 OneNote"
               @click="saveToOnenote(msg)"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24">
-                <rect
-                  width="24"
-                  height="24"
-                  rx="4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                />
-                <text
-                  x="6"
-                  y="17"
-                  font-size="13"
-                  font-weight="bold"
-                  fill="currentColor"
-                  font-family="Arial"
-                >
-                  N
-                </text>
-              </svg>
+              <img class="save-action-icon" :src="onenoteIcon" alt="" />
               OneNote
             </button>
           </div>
@@ -711,6 +681,14 @@ onMounted(() => {
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+.save-action-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .save-action-btn:hover {
