@@ -3,6 +3,11 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import directoryIcon from '@/assets/markdown/directoryIcon.svg'
 import refreshIcon from '@/assets/markdown/refreshIcon.svg'
+import newFileIcon from '@/assets/markdown/newFileIcon.svg'
+import saveIcon from '@/assets/markdown/saveIcon.svg'
+import editIcon from '@/assets/markdown/editIcon.svg'
+import previewIcon from '@/assets/markdown/previewIcon.svg'
+import fileListIcon from '@/assets/markdown/fileListIcon.svg'
 
 interface MdFile {
   name: string
@@ -333,37 +338,10 @@ onUnmounted(() => {
         </button>
         <div class="separator" />
         <button class="tool-btn" title="新建文件" :disabled="!dirHandle" @click="startNewFile">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="12" y1="18" x2="12" y2="12" />
-            <line x1="9" y1="15" x2="15" y2="15" />
-          </svg>
+          <img :src="newFileIcon" alt="" width="15" height="15" />
         </button>
         <button class="tool-btn" title="保存 (Ctrl+S)" :disabled="!currentFile" @click="saveFile">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-            <polyline points="17 21 17 13 7 13 7 21" />
-            <polyline points="7 3 7 8 15 8" />
-          </svg>
+          <img :src="saveIcon" alt="" width="15" height="15" />
         </button>
         <div class="separator" />
         <button
@@ -372,19 +350,7 @@ onUnmounted(() => {
           title="编辑"
           @click="isPreview = false"
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
+          <img :src="editIcon" alt="" width="15" height="15" />
         </button>
         <button
           class="tool-btn"
@@ -392,19 +358,7 @@ onUnmounted(() => {
           title="预览"
           @click="isPreview = true"
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
+          <img :src="previewIcon" alt="" width="15" height="15" />
         </button>
         <div class="separator" />
         <button
@@ -413,19 +367,7 @@ onUnmounted(() => {
           title="文件列表"
           @click="showSidebar = !showSidebar"
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
+          <img :src="fileListIcon" alt="" width="15" height="15" />
         </button>
       </div>
 
