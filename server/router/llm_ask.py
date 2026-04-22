@@ -1,8 +1,23 @@
-from typing import Optional
+import json
+import logging
+import sys
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG,
+    format="%(asctime)s [LLM] %(message)s",
+    force=True,
+)
+logger = logging.getLogger("llm_ask")
 
 from auth.jwt_handler import get_current_user
 
@@ -24,12 +39,12 @@ class LLMAsk(BaseModel):
 
 @llm_ask_router.post(
     "/llm_ask",
-    summary="读书场景多模态问答",
+    summary="读书场景多模态问答（流式）",
     description=("根据书名、用户问题与页面截图调用多模态大模型，"
-                 "结合截图中的书本内容给出解答。请求体为 OpenAI 兼容服务的连接参数与上下文。"),
-    response_description="模型返回的 assistant 文本内容",
+                 "以 SSE 流式格式返回 assistant 文本内容。"),
+    response_description="SSE 流：每帧格式为 data: {\"content\": \"...\"}，结束帧为 data: [DONE]",
 )
-async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Optional[str]:
+async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> StreamingResponse:
 
     prompt = f"""
     你是一个专业的计算机领域的专家，现在用户正在阅读一本名为{payload.book_name}的书，用户现在遇到了一个问题，请你根据书中的内容以及用户的问题，给出详细的解答。
@@ -40,9 +55,17 @@ async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Option
     请根据书中的内容，给出详细的解答。
     """
 
+    # api_key = os.getenv("api_key") if payload.api_key and payload.api_key != "" is None else payload.api_key
+    # base_url = os.getenv("base_url") if payload.base_url and payload.base_url != "" is None else payload.base_url
+    # model = os.getenv("llm_model") if payload.model and payload.model != "" is None else payload.model
+
+    api_key = os.getenv("api_key")
+    base_url = os.getenv("base_url")
+    model = os.getenv("llm_model")
+
     client = AsyncOpenAI(
-        api_key=payload.api_key,
-        base_url=payload.base_url,
+        api_key=api_key,
+        base_url=base_url,
     )
     messages = [
         {
@@ -57,8 +80,7 @@ async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Option
     ]
     if payload.use_image:
         messages.append({
-            "role":
-            "user",
+            "role": "user",
             "content": [
                 {
                     "type": "image_url",
@@ -68,8 +90,28 @@ async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Option
                 },
             ],
         })
-    completion = await client.chat.completions.create(
-        model=payload.model,
-        messages=messages,
+
+    async def generate() -> AsyncIterator[str]:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+        )
+        full_text: list[str] = []
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta is not None:
+                full_text.append(delta)
+                logger.debug(delta)
+                yield f"data: {json.dumps({'content': delta}, ensure_ascii=False)}\n\n"
+        logger.info("流式输出完成，完整内容：%s", "".join(full_text))
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
-    return completion.choices[0].message.content

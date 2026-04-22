@@ -10,7 +10,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 def create_access_token(username: str) -> str:
@@ -42,6 +42,14 @@ def decode_access_token(token: str) -> str:
         )
 
 
+IS_DEBUG = os.getenv("is_debug", "false").strip().lower() == "true"
+
+
 def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
-    """FastAPI 依赖：校验 Bearer token，返回当前用户名。"""
+    """FastAPI 依赖：校验 Bearer token，返回当前用户名。
+    
+    debug 模式下跳过验证，直接返回 'debug_user'。
+    """
+    if IS_DEBUG:
+        return "debug_user"
     return decode_access_token(token)

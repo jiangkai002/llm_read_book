@@ -52,7 +52,7 @@ const toggleChat = () => {
 <template>
   <div class="app">
     <div class="pdf-area" :class="{ expanded: chatCollapsed }">
-      <PdfViewer url="/test.pdf" id="pdf" @ready="onPdfReady" />
+      <PdfViewer url="/paper.pdf" id="pdf" @ready="onPdfReady" />
     </div>
 
     <button class="collapse-btn" :class="{ collapsed: chatCollapsed }" @click="toggleChat">

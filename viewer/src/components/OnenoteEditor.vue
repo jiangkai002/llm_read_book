@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import onenoteImg from '@/assets/onenote.png'
-import configIcon from '@/assets/config_icon.svg'
+import configIcon from '@/assets/configIcon.svg'
 
 interface Notebook {
   id: string
@@ -63,7 +63,7 @@ const saveConfig = () => {
 // ── API 请求封装 ──
 
 const api = async (path: string, options: RequestInit = {}) => {
-  const res = await fetch(`${backendUrl.value}${path}`, {
+  const res = await fetch(path, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(options.headers as any) },
     ...options,
@@ -84,7 +84,7 @@ const login = () => {
     return
   }
 
-  const redirectUri = `${backendUrl.value}/api/onenote/auth/callback`
+  const redirectUri = `${window.location.origin}/api/onenote/auth/callback`
   const scopes = 'openid profile offline_access User.Read Notes.ReadWrite.All'
 
   const authUrl =

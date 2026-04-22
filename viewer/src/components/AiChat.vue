@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { marked } from 'marked'
-import { LlmService, LLMAsk } from '@/api/index'
-import { syncApiClientFromStorage } from '@/api/client'
 import onenoteIcon from '@/assets/onenote_icon.svg'
 import mdIcon from '@/assets/markdown_icon.svg'
+import configIcon from '@/assets/configIcon.svg'
+import screenshotIcon from '@/assets/screenshotIcon.svg'
+import deleteIcon from '@/assets/delete.svg'
+import { LlmService } from '@/api/index'
 
 /** 无截图时占位，满足后端多模态请求（1×1 透明 PNG） */
 const PLACEHOLDER_IMAGE_BASE64 = ''
@@ -100,7 +102,6 @@ const saveConfig = () => {
   localStorage.setItem('ai_api_key', apiConfig.value.apiKey)
   localStorage.setItem('ai_model', apiConfig.value.model)
   localStorage.setItem('ai_book_name', apiConfig.value.bookName.trim() || '当前书籍')
-  syncApiClientFromStorage()
   showConfig.value = false
 }
 
@@ -179,14 +180,13 @@ const sendMessage = async () => {
     isStreaming: true,
   }
   messages.value.push(assistantMsg)
+  // push 后必须从 messages.value 取出响应式代理版本，
+  // 直接用 assistantMsg（原始对象）修改属性会绕过 Vue Proxy，不触发视图更新。
+  const reactiveAssistantMsg = messages.value[messages.value.length - 1]
   isLoading.value = true
 
   try {
-    if (apiConfig.value.apiKey && apiConfig.value.endpoint) {
-      await callBackendLLM(text, image, assistantMsg, useImageForRequest)
-    } else {
-      await simulateStream(assistantMsg)
-    }
+    await callBackendLLM(text, image, reactiveAssistantMsg, useImageForRequest)
   } catch (err: any) {
     const detail = err?.response?.data
     const msg =
@@ -197,9 +197,9 @@ const sendMessage = async () => {
           : detail?.detail != null
             ? String(detail.detail)
             : err?.message || '未知错误'
-    assistantMsg.content = `请求失败：${msg}。请确认后端已启动，并检查大模型 API 配置。`
+    reactiveAssistantMsg.content = `请求失败：${msg}。请确认后端已启动，并检查大模型 API 配置。`
   } finally {
-    assistantMsg.isStreaming = false
+    reactiveAssistantMsg.isStreaming = false
     isLoading.value = false
     await scrollToBottom()
   }
@@ -211,23 +211,59 @@ const callBackendLLM = async (
   target: Message,
   useImage: boolean,
 ) => {
-  syncApiClientFromStorage()
   const imageBase64 = image ? stripDataUrlBase64(image) : PLACEHOLDER_IMAGE_BASE64
   const question = text.trim() || (image ? '请结合截图内容回答。' : '请回答。')
-  const body = new LLMAsk({
+  const body = {
     use_image: useImage,
     book_name: apiConfig.value.bookName.trim() || '当前书籍',
     question,
     image_base64: imageBase64,
-    image_content: (props.selectedText?.trim() || '') as string,
+    image_content: props.selectedText?.trim() || '',
     api_key: apiConfig.value.apiKey,
     base_url: normalizeOpenAIBaseUrl(apiConfig.value.endpoint),
     model: apiConfig.value.model,
+  }
+  // axios 客户端会把流式响应提前消费并 resolve(res.data)，
+  // 导致 response.body 为 undefined，因此改用原生 fetch 保留 ReadableStream。
+  // 前后端同容器部署，直接用相对路径，无需指定 host。
+  const response = await fetch('/api/llm/llm_ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
-  const res = await LlmService.llmAskApiLlmLlmAskPost({ body })
-  const out = typeof res === 'string' ? res : res == null ? '' : String(res)
-  target.content = out
-  await scrollToBottom()
+  console.log('response', response)
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`HTTP ${response.status}: ${text || response.statusText}`)
+  }
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data: ')) continue
+      const data = trimmed.slice(6)
+      if (data === '[DONE]') return
+      try {
+        const parsed = JSON.parse(data) as { content?: string }
+        if (parsed.content) {
+          console.log('parsed.content', parsed.content)
+          target.content += parsed.content
+          await scrollToBottom()
+        }
+      } catch {
+        // 忽略非 JSON 行
+      }
+    }
+  }
 }
 
 const simulateStream = async (target: Message) => {
@@ -292,48 +328,13 @@ onMounted(() => {
           title="截图（请在左侧 PDF 区域框选）"
           @click="props.onRequestScreenshot?.()"
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
-          </svg>
+          <img class="save-action-icon" :src="screenshotIcon" alt="" width="18" height="18" />
         </button>
         <button class="icon-btn" title="清空对话" @click="clearHistory">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6l-1 14H6L5 6"></path>
-            <path d="M10 11v6M14 11v6"></path>
-            <path d="M9 6V4h6v2"></path>
-          </svg>
+          <img class="save-action-icon" :src="deleteIcon" alt="" width="18" height="18" />
         </button>
         <button class="icon-btn" title="API 配置" @click="showConfig = !showConfig">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-            ></path>
-          </svg>
+          <img class="save-action-icon" :src="configIcon" alt="" />
         </button>
       </div>
     </div>
