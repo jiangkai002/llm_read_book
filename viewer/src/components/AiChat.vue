@@ -3,6 +3,7 @@ import { ref, nextTick, watch, onMounted } from 'vue'
 import { marked } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import 'katex/dist/katex.min.css'
+import newChat from '@/assets/chat/newChat.svg'
 
 marked.use(
   markedKatex({
@@ -124,8 +125,17 @@ const clearAttachment = () => {
   attachedImage.value = null
 }
 
-const clearHistory = () => {
+const startNewChat = () => {
   messages.value = []
+  attachedImage.value = null
+  inputText.value = ''
+  messages.value.push({
+    id: Date.now().toString(),
+    role: 'assistant',
+    content:
+      '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置后端地址与大模型 API（经服务端转发）。',
+    timestamp: new Date(),
+  })
 }
 
 const handlePaste = (e: ClipboardEvent) => {
@@ -323,13 +333,7 @@ const saveToOnenote = (msg: Message) => {
 }
 
 onMounted(() => {
-  messages.value.push({
-    id: '0',
-    role: 'assistant',
-    content:
-      '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置后端地址与大模型 API（经服务端转发）。',
-    timestamp: new Date(),
-  })
+  startNewChat()
 })
 </script>
 
@@ -349,8 +353,8 @@ onMounted(() => {
         >
           <img class="save-action-icon" :src="screenshotIcon" alt="" width="18" height="18" />
         </button>
-        <button class="icon-btn" title="清空对话" @click="clearHistory">
-          <img class="save-action-icon" :src="deleteIcon" alt="" width="18" height="18" />
+        <button class="icon-btn" title="新建对话" @click="startNewChat">
+          <img class="save-action-icon" :src="newChat" alt="" width="18" height="18" />
         </button>
         <button class="icon-btn" title="API 配置" @click="showConfig = !showConfig">
           <img class="save-action-icon" :src="configIcon" alt="" />
