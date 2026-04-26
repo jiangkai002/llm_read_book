@@ -13,10 +13,12 @@
     "api": "node src/swaggergen.cjs"
   },
   "dependencies": {
-    "axios": "^1.15.0",
     "@embedpdf/vue-pdf-viewer": "^2.9.0",
     "@types/marked": "^6.0.0",
+    "axios": "^1.15.0",
+    "katex": "^0.16.45",
     "marked": "^15.0.7",
+    "marked-katex-extension": "^5.1.8",
     "pdfjs-dist": "^5.0.375",
     "tesseract.js": "^7.0.0",
     "vue": "^3.5.13",

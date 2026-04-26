@@ -131,7 +131,7 @@ export class AuthService {
 
 export class LlmService {
   /**
-   * 读书场景多模态问答
+   * 读书场景多模态问答（流式）
    */
   static llmAskApiLlmLlmAskPost(
     params: {
@@ -406,6 +406,9 @@ export class LLMAsk {
 
   /** 模型名称，可选支持 vision \/ 多模态 */
   'model': string;
+
+  /** 历史聊天记录 */
+  'history_chat_list': string[];
 
   constructor(data: LLMAsk = {}) {
     Object.assign(this, data);

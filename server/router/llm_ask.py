@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 logging.basicConfig(
@@ -35,6 +36,7 @@ class LLMAsk(BaseModel):
                           description="API 根地址，例如 https://api.openai.com/v1")
     use_image: bool = Field(..., description="是否使用图片理解")
     model: str = Field(..., description="模型名称，可选支持 vision / 多模态")
+    history_chat_list: list[str] = Field(..., description="历史聊天记录")
 
 
 @llm_ask_router.post(
@@ -42,18 +44,20 @@ class LLMAsk(BaseModel):
     summary="读书场景多模态问答（流式）",
     description=("根据书名、用户问题与页面截图调用多模态大模型，"
                  "以 SSE 流式格式返回 assistant 文本内容。"),
-    response_description="SSE 流：每帧格式为 data: {\"content\": \"...\"}，结束帧为 data: [DONE]",
+    response_description=
+    "SSE 流：每帧格式为 data: {\"content\": \"...\"}，结束帧为 data: [DONE]",
 )
-async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> StreamingResponse:
+async def llm_ask(
+    payload: LLMAsk, _: str = Depends(get_current_user)) -> StreamingResponse:
 
     prompt = f"""
     你是一个专业的计算机领域的专家，现在用户正在阅读一本名为{payload.book_name}的书，用户现在遇到了一个问题，请你根据书中的内容以及用户的问题，给出详细的解答。
     用户问题是：
     {payload.question}
-    提问的书本截图的内容是：
-    {payload.image_content}
     请根据书中的内容，给出详细的解答。
     """
+
+    # print("图片内容：", payload.image_base64)
 
     # api_key = os.getenv("api_key") if payload.api_key and payload.api_key != "" is None else payload.api_key
     # base_url = os.getenv("base_url") if payload.base_url and payload.base_url != "" is None else payload.base_url
@@ -67,7 +71,20 @@ async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Stream
         api_key=api_key,
         base_url=base_url,
     )
-    messages = [
+
+    # 解析历史消息，转换为 OpenAI messages 格式
+    history_messages = []
+    for item in payload.history_chat_list:
+        try:
+            msg = json.loads(item)
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and content:
+                history_messages.append({"role": role, "content": content})
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("跳过无法解析的历史消息：%s", item)
+
+    messages = history_messages + [
         {
             "role": "user",
             "content": [
@@ -80,7 +97,8 @@ async def llm_ask(payload: LLMAsk, _: str = Depends(get_current_user)) -> Stream
     ]
     if payload.use_image:
         messages.append({
-            "role": "user",
+            "role":
+            "user",
             "content": [
                 {
                     "type": "image_url",

@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { marked } from 'marked'
+import markedKatex from 'marked-katex-extension'
+import 'katex/dist/katex.min.css'
+
+marked.use(
+  markedKatex({
+    throwOnError: false,
+    displayMode: false,
+  }),
+)
 import onenoteIcon from '@/assets/onenote_icon.svg'
 import mdIcon from '@/assets/markdown_icon.svg'
 import configIcon from '@/assets/configIcon.svg'
 import screenshotIcon from '@/assets/screenshotIcon.svg'
 import deleteIcon from '@/assets/delete.svg'
-import { LlmService } from '@/api/index'
 
 /** 无截图时占位，满足后端多模态请求（1×1 透明 PNG） */
 const PLACEHOLDER_IMAGE_BASE64 = ''
@@ -205,6 +213,17 @@ const sendMessage = async () => {
   }
 }
 
+const buildHistoryChatList = (): string[] => {
+  // 截取当前轮（末尾的 user + 空 assistant）之前的所有已完成消息
+  const history = messages.value.slice(0, -2)
+  return history
+    .filter((m) => m.content.trim())
+    .map((m) => {
+      const roleLabel = m.role === 'user' ? 'user' : 'assistant'
+      return `{"role": "${roleLabel}", "content": "${m.content.trim()}"}`
+    })
+}
+
 const callBackendLLM = async (
   text: string,
   image: string | null,
@@ -212,6 +231,7 @@ const callBackendLLM = async (
   useImage: boolean,
 ) => {
   const imageBase64 = image ? stripDataUrlBase64(image) : PLACEHOLDER_IMAGE_BASE64
+  console.log('图片base64', imageBase64)
   const question = text.trim() || (image ? '请结合截图内容回答。' : '请回答。')
   const body = {
     use_image: useImage,
@@ -222,6 +242,7 @@ const callBackendLLM = async (
     api_key: apiConfig.value.apiKey,
     base_url: normalizeOpenAIBaseUrl(apiConfig.value.endpoint),
     model: apiConfig.value.model,
+    history_chat_list: buildHistoryChatList(),
   }
   // axios 客户端会把流式响应提前消费并 resolve(res.data)，
   // 导致 response.body 为 undefined，因此改用原生 fetch 保留 ReadableStream。
@@ -231,7 +252,6 @@ const callBackendLLM = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  console.log('response', response)
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     throw new Error(`HTTP ${response.status}: ${text || response.statusText}`)
@@ -255,7 +275,6 @@ const callBackendLLM = async (
       try {
         const parsed = JSON.parse(data) as { content?: string }
         if (parsed.content) {
-          console.log('parsed.content', parsed.content)
           target.content += parsed.content
           await scrollToBottom()
         }
