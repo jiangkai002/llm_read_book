@@ -603,6 +603,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  cursor: auto;
 }
 .chat-messages::-webkit-scrollbar {
   width: 4px;
@@ -668,6 +669,10 @@ onMounted(() => {
   line-height: 1.6;
   word-break: break-word;
   position: relative;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: transparent;
 }
 .bubble.assistant {
   background: #fff;
