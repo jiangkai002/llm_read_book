@@ -9,6 +9,8 @@ import editIcon from '@/assets/markdown/editIcon.svg'
 import previewIcon from '@/assets/markdown/previewIcon.svg'
 import fileListIcon from '@/assets/markdown/fileListIcon.svg'
 
+import { GenerateNoteService } from '@/api'
+
 interface MdFile {
   name: string
   path: string
