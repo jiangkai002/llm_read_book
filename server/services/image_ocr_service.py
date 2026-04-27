@@ -86,5 +86,5 @@ class ImageOCRService:
 
 if __name__ == "__main__":
     ocr_service = ImageOCRService()
-    text = ocr_service.ocr_from_file("test_img.png")
+    text = ocr_service.ocr_from_file("test.png")
     print(text)
