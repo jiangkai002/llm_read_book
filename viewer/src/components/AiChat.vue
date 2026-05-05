@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { marked } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import 'katex/dist/katex.min.css'
@@ -63,6 +63,15 @@ interface Message {
   isStreaming?: boolean
 }
 
+/** 持久化存储的单条对话（不含 isStreaming，图片 base64 置空以节省空间） */
+interface Conversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: (Omit<Message, 'isStreaming'> & { images?: string[] })[]
+}
+
 interface ApiConfig {
   /** 本机 FastAPI 等，如 http://localhost:8000 */
   backendUrl: string
@@ -83,6 +92,9 @@ const persistUseImagePreference = () => {
 }
 const isLoading = ref(false)
 const showConfig = ref(false)
+const showHistory = ref(false)
+const conversations = ref<Conversation[]>([])
+const currentConvId = ref<string>('')
 const chatContainerRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -127,6 +139,121 @@ const saveConfig = () => {
   showConfig.value = false
 }
 
+// ── 历史对话持久化 ──
+
+const STORAGE_KEY = 'ai_conversations'
+const MAX_CONV = 50
+
+const getConvTitle = (msgs: Message[]): string => {
+  const first = msgs.find((m) => m.role === 'user' && m.content.trim())
+  return first?.content.replace(/\n/g, ' ').slice(0, 30).trim() || '新对话'
+}
+
+const loadConversations = (): void => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    conversations.value = raw ? JSON.parse(raw) : []
+  } catch {
+    conversations.value = []
+  }
+}
+
+const persistConversations = (): void => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations.value))
+  } catch {
+    // 超出 quota 时保留最近 20 条
+    conversations.value = conversations.value.slice(0, 20)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations.value))
+    } catch {}
+  }
+}
+
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+const saveCurrentConversation = (): void => {
+  if (!currentConvId.value) return
+  // 去掉 isStreaming 标志，图片 base64 置空节省空间（历史里只保留文字）
+  const msgs = messages.value
+    .filter((m) => !m.isStreaming && (m.content || m.images?.length))
+    .map((m) => ({ ...m, isStreaming: undefined, images: [] }))
+
+  const title = getConvTitle(messages.value)
+  const idx = conversations.value.findIndex((c) => c.id === currentConvId.value)
+  if (idx >= 0) {
+    conversations.value[idx] = {
+      ...conversations.value[idx],
+      title,
+      updatedAt: Date.now(),
+      messages: msgs,
+    }
+  } else {
+    conversations.value.unshift({
+      id: currentConvId.value,
+      title,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: msgs,
+    })
+    if (conversations.value.length > MAX_CONV) {
+      conversations.value = conversations.value.slice(0, MAX_CONV)
+    }
+  }
+  persistConversations()
+}
+
+const scheduleAutoSave = (): void => {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => saveCurrentConversation(), 1200)
+}
+
+const switchToConversation = (conv: Conversation): void => {
+  saveCurrentConversation()
+  currentConvId.value = conv.id
+  messages.value = conv.messages.map((m) => ({
+    ...m,
+    timestamp: new Date(m.timestamp),
+  })) as Message[]
+  attachedImage.value = null
+  inputText.value = ''
+  showHistory.value = false
+  nextTick(() => scrollToBottom())
+}
+
+const deleteConversation = (id: string, e: Event): void => {
+  e.stopPropagation()
+  const idx = conversations.value.findIndex((c) => c.id === id)
+  if (idx < 0) return
+  conversations.value.splice(idx, 1)
+  persistConversations()
+  if (id === currentConvId.value) {
+    startNewChat()
+  }
+}
+
+const formatConvDate = (ts: number): string => {
+  const d = new Date(ts)
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+}
+
+const groupedConversations = computed(() => {
+  const today: Conversation[] = []
+  const earlier: Conversation[] = []
+  const now = new Date()
+  for (const c of conversations.value) {
+    if (new Date(c.updatedAt).toDateString() === now.toDateString()) today.push(c)
+    else earlier.push(c)
+  }
+  return { today, earlier }
+})
+
+// ──────────────────────────────────────────────
+
 const scrollToBottom = async () => {
   await nextTick()
   if (chatContainerRef.value) {
@@ -139,11 +266,14 @@ const clearAttachment = () => {
 }
 
 const startNewChat = () => {
+  saveCurrentConversation()
+  const id = Date.now().toString()
+  currentConvId.value = id
   messages.value = []
   attachedImage.value = null
   inputText.value = ''
   messages.value.push({
-    id: Date.now().toString(),
+    id: `${id}-welcome`,
     role: 'assistant',
     content:
       '你好！我是 AI 助手。你可以：\n- 粘贴 PDF 中复制的文字进行提问\n- 截取 PDF 截图后自动附加到此处\n\n请先点击 ⚙️ 配置后端地址与大模型 API（经服务端转发）。',
@@ -372,8 +502,29 @@ const saveAsAiNote = async (assistantMsg: Message) => {
   await props.onSaveAsAiNote(payload)
 }
 
+watch(
+  messages,
+  () => {
+    if (messages.value.some((m) => m.role === 'user' && m.content)) {
+      scheduleAutoSave()
+    }
+  },
+  { deep: true },
+)
+
 onMounted(() => {
-  startNewChat()
+  loadConversations()
+  if (conversations.value.length > 0) {
+    const latest = conversations.value[0]
+    currentConvId.value = latest.id
+    messages.value = latest.messages.map((m) => ({
+      ...m,
+      timestamp: new Date(m.timestamp),
+    })) as Message[]
+    nextTick(() => scrollToBottom())
+  } else {
+    startNewChat()
+  }
 })
 </script>
 
@@ -396,7 +547,41 @@ onMounted(() => {
         <button class="icon-btn" title="新建对话" @click="startNewChat">
           <img class="save-action-icon" :src="newChat" alt="" width="18" height="18" />
         </button>
-        <button class="icon-btn" title="API 配置" @click="showConfig = !showConfig">
+        <button
+          class="icon-btn"
+          :class="{ active: showHistory }"
+          title="历史对话"
+          @click="
+            () => {
+              showHistory = !showHistory
+              showConfig = false
+            }
+          "
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          title="API 配置"
+          @click="
+            () => {
+              showConfig = !showConfig
+              showHistory = false
+            }
+          "
+        >
           <img class="save-action-icon" :src="configIcon" alt="" />
         </button>
       </div>
@@ -422,6 +607,59 @@ onMounted(() => {
           <input v-model="apiConfig.bookName" placeholder="当前阅读的书名" />
         </div>
         <button class="save-btn" @click="saveConfig">保存配置</button>
+      </div>
+    </transition>
+
+    <!-- 历史对话面板 -->
+    <transition name="history-slide">
+      <div v-if="showHistory" class="history-panel">
+        <div class="history-header">
+          <span>历史对话</span>
+          <span class="history-count">共 {{ conversations.length }} 条</span>
+        </div>
+        <div class="history-list">
+          <template v-if="conversations.length === 0">
+            <div class="history-empty">暂无历史对话</div>
+          </template>
+          <template v-else>
+            <div v-if="groupedConversations.today.length" class="history-group-label">今天</div>
+            <div
+              v-for="conv in groupedConversations.today"
+              :key="conv.id"
+              class="history-item"
+              :class="{ active: conv.id === currentConvId }"
+              @click="switchToConversation(conv)"
+            >
+              <div class="history-item-title">{{ conv.title }}</div>
+              <div class="history-item-meta">{{ formatConvDate(conv.updatedAt) }}</div>
+              <button
+                class="history-item-del"
+                title="删除"
+                @click="deleteConversation(conv.id, $event)"
+              >
+                <img :src="deleteIcon" alt="" width="12" height="12" />
+              </button>
+            </div>
+            <div v-if="groupedConversations.earlier.length" class="history-group-label">更早</div>
+            <div
+              v-for="conv in groupedConversations.earlier"
+              :key="conv.id"
+              class="history-item"
+              :class="{ active: conv.id === currentConvId }"
+              @click="switchToConversation(conv)"
+            >
+              <div class="history-item-title">{{ conv.title }}</div>
+              <div class="history-item-meta">{{ formatConvDate(conv.updatedAt) }}</div>
+              <button
+                class="history-item-del"
+                title="删除"
+                @click="deleteConversation(conv.id, $event)"
+              >
+                <img :src="deleteIcon" alt="" width="12" height="12" />
+              </button>
+            </div>
+          </template>
+        </div>
       </div>
     </transition>
 
@@ -645,6 +883,143 @@ onMounted(() => {
 }
 .save-btn:hover {
   background: #4f46e5;
+}
+
+/* ── 历史对话面板 ── */
+.history-panel {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow: hidden;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.history-count {
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.history-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.history-list::-webkit-scrollbar {
+  width: 3px;
+}
+.history-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.history-empty {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.history-group-label {
+  padding: 4px 14px 2px;
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 1px 6px;
+  transition: background 0.12s;
+  position: relative;
+}
+.history-item:hover {
+  background: #f3f4f6;
+}
+.history-item.active {
+  background: #ede9fe;
+}
+
+.history-item-title {
+  flex: 1;
+  font-size: 12.5px;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-item.active .history-item-title {
+  color: #4f46e5;
+  font-weight: 500;
+}
+
+.history-item-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.history-item-del {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+.history-item:hover .history-item-del {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-item-del:hover {
+  opacity: 1;
+  background: #fee2e2;
+}
+
+.history-slide-enter-active,
+.history-slide-leave-active {
+  transition:
+    max-height 0.22s ease,
+    opacity 0.18s ease;
+  overflow: hidden;
+}
+.history-slide-enter-from,
+.history-slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.history-slide-enter-to,
+.history-slide-leave-from {
+  max-height: 280px;
+  opacity: 1;
+}
+
+/* ── 激活态按钮 ── */
+.icon-btn.active {
+  color: #6366f1;
+  background: #ede9fe;
 }
 
 .chat-messages {
