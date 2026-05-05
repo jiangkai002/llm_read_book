@@ -1,7 +1,8 @@
+import asyncio
 import json
 import logging
 import sys
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,17 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# OCR 服务懒加载单例，避免影响服务器启动速度
+_ocr_service = None
+
+
+def _get_ocr_service():
+    global _ocr_service
+    if _ocr_service is None:
+        from services.image_ocr_service import ImageOCRService
+        _ocr_service = ImageOCRService()
+    return _ocr_service
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -73,7 +85,7 @@ async def llm_ask(
     )
 
     # 解析历史消息，转换为 OpenAI messages 格式
-    history_messages = []
+    history_messages: list[dict] = []
     for item in payload.history_chat_list:
         try:
             msg = json.loads(item)
@@ -84,30 +96,42 @@ async def llm_ask(
         except (json.JSONDecodeError, AttributeError):
             logger.warning("跳过无法解析的历史消息：%s", item)
 
-    messages = history_messages + [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": prompt,
-                },
-            ],
-        },
-    ]
     if payload.use_image:
-        messages.append({
-            "role":
-            "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{payload.image_base64}"
+        # 多模态模式：图片以 image_url 形式传给模型
+        messages = history_messages + [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{payload.image_base64}"
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            },
+        ]
+    else:
+        # 纯文本模式：对图片做 OCR，将识别结果拼入 prompt
+        if payload.image_base64:
+            try:
+                loop = asyncio.get_event_loop()
+                ocr_text: str = await loop.run_in_executor(
+                    None,
+                    _get_ocr_service().ocr_from_base64,
+                    payload.image_base64,
+                )
+                if ocr_text.strip():
+                    prompt += f"\n\n以下是页面截图的 OCR 识别内容，供参考：\n{ocr_text}"
+                    logger.debug("OCR 识别完成，字符数：%d", len(ocr_text))
+            except Exception as e:
+                logger.warning("OCR 识别失败，跳过截图内容：%s", e)
+
+        # 纯文本消息格式，兼容非 vision 模型
+        messages = history_messages + [
+            {"role": "user", "content": prompt},
+        ]
 
     async def generate() -> AsyncIterator[str]:
         stream = await client.chat.completions.create(
