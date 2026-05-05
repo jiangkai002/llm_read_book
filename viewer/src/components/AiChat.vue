@@ -33,12 +33,23 @@ function normalizeOpenAIBaseUrl(endpoint: string): string {
   return u || 'https://api.openai.com/v1'
 }
 
+interface AiNotePayload {
+  question: string
+  answer: string
+  imageContent: string
+  bookName: string
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
 const props = defineProps<{
   screenshot?: string | null
   selectedText?: string | null
   onRequestScreenshot?: () => void
   onSaveAsMarkdown?: (filename: string, content: string) => void
   onSaveToOnenote?: (title: string, content: string) => void
+  onSaveAsAiNote?: (payload: AiNotePayload) => void | Promise<void>
 }>()
 
 interface Message {
@@ -46,6 +57,8 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   images?: string[]
+  /** 用户消息附带的截图相关上下文文本（如 OCR / 选区文字），便于后续整理为笔记 */
+  imageContext?: string
   timestamp: Date
   isStreaming?: boolean
 }
@@ -182,6 +195,7 @@ const sendMessage = async () => {
     role: 'user',
     content: text,
     images: image ? [image] : [],
+    imageContext: props.selectedText?.trim() || '',
     timestamp: new Date(),
   }
   messages.value.push(userMsg)
@@ -332,6 +346,32 @@ const saveToOnenote = (msg: Message) => {
   props.onSaveToOnenote(title, msg.content)
 }
 
+/** 找到当前 assistant 消息对应的「本轮 user 提问」消息（向上回溯第一条 user 消息）。 */
+const findPairedUserMessage = (assistantMsg: Message): Message | null => {
+  const idx = messages.value.findIndex((m) => m.id === assistantMsg.id)
+  if (idx < 0) return null
+  for (let i = idx - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'user') return messages.value[i]
+  }
+  return null
+}
+
+const saveAsAiNote = async (assistantMsg: Message) => {
+  if (!props.onSaveAsAiNote) return
+  if (!assistantMsg.content || assistantMsg.isStreaming) return
+  const userMsg = findPairedUserMessage(assistantMsg)
+  const payload: AiNotePayload = {
+    question: userMsg?.content?.trim() || '',
+    answer: assistantMsg.content.trim(),
+    imageContent: userMsg?.imageContext?.trim() || '',
+    bookName: apiConfig.value.bookName.trim() || '当前书籍',
+    apiKey: apiConfig.value.apiKey,
+    baseUrl: normalizeOpenAIBaseUrl(apiConfig.value.endpoint),
+    model: apiConfig.value.model,
+  }
+  await props.onSaveAsAiNote(payload)
+}
+
 onMounted(() => {
   startNewChat()
 })
@@ -416,6 +456,17 @@ onMounted(() => {
             >
               <img class="save-action-icon" :src="mdIcon" alt="" />
               Markdown
+            </button>
+            <button
+              v-if="
+                msg.role === 'assistant' && msg.content && !msg.isStreaming && props.onSaveAsAiNote
+              "
+              class="save-action-btn ai-note"
+              title="由 AI 整理本轮问答为笔记，自动判定新建/追加到本地"
+              @click="saveAsAiNote(msg)"
+            >
+              <span class="save-action-icon ai-note-icon">✦</span>
+              AI 笔记
             </button>
             <button
               v-if="
@@ -730,6 +781,23 @@ onMounted(() => {
   background: #f3e8ff;
   border-color: #d8b4fe;
   color: #7719aa;
+}
+
+.save-action-btn.ai-note:hover {
+  background: linear-gradient(90deg, #ede9fe 0%, #fce7f3 100%);
+  border-color: #c4b5fd;
+  color: #6d28d9;
+}
+
+.ai-note-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 11px;
+  color: #6366f1;
+  font-weight: 700;
 }
 
 /* 光标闪烁 */

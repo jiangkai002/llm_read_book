@@ -291,7 +291,135 @@ const saveNewFile = async (filename: string, mdContent: string): Promise<boolean
   }
 }
 
-defineExpose({ saveNewFile })
+// ── 外部调用：扫描笔记目录，返回每个 .md 文件的「文件名 + 摘要」 ──
+
+interface NoteSummary {
+  filename: string
+  summary: string
+}
+
+const getNotesSummary = async (maxChars = 240): Promise<NoteSummary[]> => {
+  if (!dirHandle) return []
+  if (files.value.length === 0) await refreshFiles()
+  const result: NoteSummary[] = []
+  for (const f of files.value) {
+    try {
+      const fileObj = await f.handle.getFile()
+      const text = await fileObj.text()
+      // 仅取首部纯文本（去除多余空行），用于让 LLM 大致理解笔记主题
+      const summary = text
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, maxChars)
+      result.push({ filename: f.name, summary })
+    } catch {
+      result.push({ filename: f.name, summary: '' })
+    }
+  }
+  return result
+}
+
+// ── 外部调用：向某个已有 .md 文件末尾追加内容 ──
+
+const appendToFile = async (filename: string, contentToAppend: string): Promise<boolean> => {
+  if (!dirHandle) {
+    showStatus('请先选择笔记目录', 3000)
+    return false
+  }
+  if (files.value.length === 0) await refreshFiles()
+  let target = files.value.find((f) => f.name === filename)
+  if (!target) {
+    // 没找到目标文件，作为新文件创建
+    return saveNewFile(filename, contentToAppend.replace(/^\s*---\s*/, ''))
+  }
+  try {
+    const existing = await (await target.handle.getFile()).text()
+    const merged = existing.replace(/\s*$/, '') + '\n' + contentToAppend.replace(/^\n+/, '')
+    const writable = await (target.handle as any).createWritable()
+    await writable.write(merged)
+    await writable.close()
+    await refreshFiles()
+    showStatus(`已追加到 ${filename}`)
+
+    const updated = files.value.find((f) => f.name === filename)
+    if (updated) await openFile(updated)
+    return true
+  } catch (e: any) {
+    showStatus('追加失败: ' + e.message)
+    return false
+  }
+}
+
+// ── 外部调用：把本轮 AI 问答整理成笔记，由后端大模型决定 create / append ──
+
+interface SaveAiNotePayload {
+  bookName: string
+  question: string
+  answer: string
+  imageContent?: string
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+const saveAiNote = async (payload: SaveAiNotePayload): Promise<boolean> => {
+  if (!dirHandle) {
+    showStatus('请先在 Markdown 标签页选择笔记目录', 3500)
+    return false
+  }
+  if (!payload.question.trim() && !payload.answer.trim()) {
+    showStatus('本轮没有可保存的内容', 2500)
+    return false
+  }
+  showStatus('AI 正在整理笔记...', 8000)
+  try {
+    const existingNotes = await getNotesSummary()
+    const res = await fetch('/api/generate_note/generate_or_append', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        book_name: payload.bookName || '当前书籍',
+        question: payload.question,
+        answer: payload.answer,
+        image_content: payload.imageContent || '',
+        existing_notes: existingNotes,
+        api_key: payload.apiKey || '',
+        base_url: payload.baseUrl || '',
+        model: payload.model || '',
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${text || res.statusText}`)
+    }
+    const data = (await res.json()) as {
+      action: 'create' | 'append'
+      target_filename: string
+      title: string
+      markdown: string
+      reason?: string
+    }
+    if (!data || !data.markdown) {
+      showStatus('AI 未返回有效笔记内容', 3000)
+      return false
+    }
+
+    if (data.action === 'append') {
+      const ok = await appendToFile(data.target_filename, data.markdown)
+      if (ok) showStatus(`已追加到《${data.target_filename}》`, 3500)
+      return ok
+    }
+    const ok = await saveNewFile(data.target_filename, data.markdown)
+    if (ok) showStatus(`已新建《${data.target_filename}》`, 3500)
+    return ok
+  } catch (e: any) {
+    showStatus('AI 笔记保存失败: ' + (e?.message || e), 4500)
+    return false
+  }
+}
+
+defineExpose({ saveNewFile, getNotesSummary, appendToFile, saveAiNote })
 
 // ── 快捷键 ──
 

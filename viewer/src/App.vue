@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import onenoteTabIcon from '@/assets/onenote_icon.svg'
 import markdownIcon from '@/assets/markdown_icon.svg'
 import PdfViewer from '@/components/PdfViewer.vue'
@@ -23,6 +23,23 @@ const onSaveAsMarkdown = async (filename: string, mdContent: string) => {
 const onSaveToOnenote = async (title: string, mdContent: string) => {
   activeTab.value = 'onenote'
   await onenoteRef.value?.saveToOnenote(title, mdContent)
+}
+
+interface AiNotePayload {
+  question: string
+  answer: string
+  imageContent: string
+  bookName: string
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+const onSaveAsAiNote = async (payload: AiNotePayload) => {
+  activeTab.value = 'markdown'
+  // 等待 markdown 面板挂载并准备就绪
+  await nextTick()
+  await mdEditorRef.value?.saveAiNote(payload)
 }
 
 const onPdfReady = (registry: PluginRegistry) => {
@@ -129,6 +146,7 @@ const toggleChat = () => {
             :selected-text="selectedText"
             :on-save-as-markdown="onSaveAsMarkdown"
             :on-save-to-onenote="onSaveToOnenote"
+            :on-save-as-ai-note="onSaveAsAiNote"
           />
           <MarkdownEditor v-show="activeTab === 'markdown'" ref="mdEditorRef" />
           <OnenoteEditor v-show="activeTab === 'onenote'" ref="onenoteRef" />
