@@ -17,9 +17,19 @@ interface MdFile {
   handle: FileSystemFileHandle
 }
 
+interface MdTreeItem {
+  name: string
+  path: string
+  kind: 'file' | 'directory'
+  depth: number
+  handle?: FileSystemFileHandle
+  children?: MdTreeItem[]
+}
+
 const content = ref('')
 const currentFile = ref<MdFile | null>(null)
 const files = ref<MdFile[]>([])
+const directoryPaths = ref<string[]>([])
 const isDirty = ref(false)
 const isPreview = ref(false)
 const showSidebar = ref(true)
@@ -45,6 +55,94 @@ const filteredFiles = computed(() => {
     (f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
   )
 })
+
+const filteredDirs = computed(() => {
+  if (!searchQuery.value) return directoryPaths.value
+  const q = searchQuery.value.toLowerCase()
+  return directoryPaths.value.filter((d) => d.toLowerCase().includes(q))
+})
+
+const expandedDirs = ref<Set<string>>(new Set())
+
+function addPathToTree(
+  nodeMap: Record<string, MdTreeItem>,
+  parts: string[],
+  fileHandle?: FileSystemFileHandle,
+) {
+  let currentPath = ''
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    const parentPath = currentPath
+    currentPath = currentPath ? `${currentPath}/${part}` : part
+    const isFile = fileHandle !== undefined && i === parts.length - 1
+
+    if (!nodeMap[currentPath]) {
+      nodeMap[currentPath] = {
+        name: part,
+        path: currentPath,
+        kind: isFile ? 'file' : 'directory',
+        depth: i,
+        handle: isFile ? fileHandle : undefined,
+        children: isFile ? undefined : [],
+      }
+
+      if (parentPath && nodeMap[parentPath]?.children) {
+        nodeMap[parentPath].children!.push(nodeMap[currentPath])
+      }
+    }
+  }
+}
+
+function buildFileTree(files: MdFile[], dirs: string[] = []): MdTreeItem[] {
+  const nodeMap: Record<string, MdTreeItem> = {}
+
+  for (const file of files) {
+    addPathToTree(nodeMap, file.path.split('/'), file.handle)
+  }
+
+  for (const dirPath of dirs) {
+    addPathToTree(nodeMap, dirPath.split('/'))
+  }
+
+  const sortItems = (items: MdTreeItem[]) => {
+    items.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    for (const item of items) {
+      if (item.children) sortItems(item.children)
+    }
+  }
+
+  const roots = Object.values(nodeMap).filter((item) => !item.path.includes('/'))
+  sortItems(roots)
+  return roots
+}
+
+const fileTree = computed(() => buildFileTree(filteredFiles.value, filteredDirs.value))
+
+function flattenTree(items: MdTreeItem[], expanded: Set<string>): MdTreeItem[] {
+  const result: MdTreeItem[] = []
+  for (const item of items) {
+    result.push(item)
+    if (item.kind === 'directory' && item.children && expanded.has(item.path)) {
+      result.push(...flattenTree(item.children, expanded))
+    }
+  }
+  return result
+}
+
+const visibleTreeItems = computed(() => flattenTree(fileTree.value, expandedDirs.value))
+
+function toggleExpand(path: string) {
+  const s = new Set(expandedDirs.value)
+  if (s.has(path)) {
+    s.delete(path)
+  } else {
+    s.add(path)
+  }
+  expandedDirs.value = s
+}
 
 watch(content, () => {
   if (skipDirtyFlag) {
@@ -93,25 +191,34 @@ async function idbLoad(): Promise<FileSystemDirectoryHandle | null> {
 
 // ── 目录扫描 ──
 
-async function scanDir(handle: FileSystemDirectoryHandle, basePath = ''): Promise<MdFile[]> {
-  const result: MdFile[] = []
+async function scanDir(
+  handle: FileSystemDirectoryHandle,
+  basePath = '',
+): Promise<{ files: MdFile[]; dirs: string[] }> {
+  const files: MdFile[] = []
+  const dirs: string[] = []
   for await (const entry of (handle as any).values()) {
     const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name
     if (entry.kind === 'file' && /\.(md|markdown)$/i.test(entry.name)) {
-      result.push({ name: entry.name, path: entryPath, handle: entry })
+      files.push({ name: entry.name, path: entryPath, handle: entry })
     } else if (entry.kind === 'directory' && !entry.name.startsWith('.')) {
-      result.push(...(await scanDir(entry, entryPath)))
+      dirs.push(entryPath)
+      const sub = await scanDir(entry, entryPath)
+      files.push(...sub.files)
+      dirs.push(...sub.dirs)
     }
   }
-  result.sort((a, b) => a.path.localeCompare(b.path))
-  return result
+  files.sort((a, b) => a.path.localeCompare(b.path))
+  return { files, dirs }
 }
 
 async function refreshFiles() {
   if (!dirHandle) return
   isScanning.value = true
   try {
-    files.value = await scanDir(dirHandle)
+    const { files: scannedFiles, dirs } = await scanDir(dirHandle)
+    files.value = scannedFiles
+    directoryPaths.value = dirs
   } finally {
     isScanning.value = false
   }
@@ -419,7 +526,91 @@ const saveAiNote = async (payload: SaveAiNotePayload): Promise<boolean> => {
   }
 }
 
-defineExpose({ saveNewFile, getNotesSummary, appendToFile, saveAiNote })
+// ── 外部调用：获取某个 .md 文件的完整内容 ──
+
+const getNoteContent = async (filename: string): Promise<string | null> => {
+  if (!dirHandle) return null
+  if (files.value.length === 0) await refreshFiles()
+  const target = files.value.find((f) => f.name === filename)
+  if (!target) return null
+  try {
+    const fileObj = await target.handle.getFile()
+    return await fileObj.text()
+  } catch {
+    return null
+  }
+}
+
+// ── 外部调用：保存带已有笔记内容的 AI 笔记 ──
+
+interface SaveAiNoteWithExistingPayload extends SaveAiNotePayload {
+  existingNoteFilename: string
+  existingNoteContent: string
+}
+
+const saveAiNoteWithExistingNote = async (payload: SaveAiNoteWithExistingPayload): Promise<boolean> => {
+  if (!dirHandle) {
+    showStatus('请先在 Markdown 标签页选择笔记目录', 3500)
+    return false
+  }
+  if (!payload.question.trim() && !payload.answer.trim()) {
+    showStatus('本轮没有可保存的内容', 2500)
+    return false
+  }
+  showStatus('AI 正在整理笔记...', 8000)
+  try {
+    // 获取其他笔记摘要（排除当前选中的）
+    const otherNotes = (await getNotesSummary()).filter(n => n.filename !== payload.existingNoteFilename)
+
+    const res = await fetch('/api/generate_note/generate_or_append', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        book_name: payload.bookName || '当前书籍',
+        question: payload.question,
+        answer: payload.answer,
+        image_content: payload.imageContent || '',
+        existing_notes: otherNotes,
+        existing_note_filename: payload.existingNoteFilename,
+        existing_note_content: payload.existingNoteContent,
+        api_key: payload.apiKey || '',
+        base_url: payload.baseUrl || '',
+        model: payload.model || '',
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${text || res.statusText}`)
+    }
+    const data = (await res.json()) as {
+      action: 'create' | 'append'
+      target_filename: string
+      title: string
+      markdown: string
+      reason?: string
+    }
+    if (!data || !data.markdown) {
+      showStatus('AI 未返回有效笔记内容', 3000)
+      return false
+    }
+
+    // 如果后端返回的是追加操作，直接追加到指定文件
+    if (data.action === 'append' || data.target_filename === payload.existingNoteFilename) {
+      const ok = await appendToFile(payload.existingNoteFilename, data.markdown)
+      if (ok) showStatus(`已追加到《${payload.existingNoteFilename}》`, 3500)
+      return ok
+    }
+    // 如果后端决定新建文件
+    const ok = await saveNewFile(data.target_filename, data.markdown)
+    if (ok) showStatus(`已新建《${data.target_filename}》`, 3500)
+    return ok
+  } catch (e: any) {
+    showStatus('AI 笔记保存失败: ' + (e?.message || e), 4500)
+    return false
+  }
+}
+
+defineExpose({ saveNewFile, getNotesSummary, appendToFile, saveAiNote, getNoteContent, saveAiNoteWithExistingNote })
 
 // ── 快捷键 ──
 
@@ -541,47 +732,87 @@ onUnmounted(() => {
 
           <div class="file-list">
             <div v-if="isScanning" class="file-list-hint">扫描中...</div>
-            <div v-else-if="filteredFiles.length === 0" class="file-list-hint">
-              {{ searchQuery ? '无匹配文件' : '目录中暂无 .md 文件' }}
+            <div v-else-if="visibleTreeItems.length === 0" class="file-list-hint">
+              {{ searchQuery ? '无匹配项' : '目录中暂无 .md 文件或子文件夹' }}
             </div>
-            <div
-              v-for="file in filteredFiles"
-              :key="file.path"
-              class="file-item"
-              :class="{ active: currentFile?.path === file.path }"
-              :title="file.path"
-              @click="openFile(file)"
-            >
-              <svg
-                class="file-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+            <template v-for="item in visibleTreeItems" :key="item.path">
+              <!-- 目录节点 -->
+              <div
+                v-if="item.kind === 'directory'"
+                class="tree-item tree-dir"
+                :style="{ paddingLeft: 8 + item.depth * 14 + 'px' }"
+                :title="item.path"
+                @click="toggleExpand(item.path)"
               >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              <div class="file-info">
-                <span class="file-item-name">{{ file.name }}</span>
-                <span v-if="file.path.includes('/')" class="file-item-path">{{ file.path }}</span>
-              </div>
-              <button class="file-delete-btn" title="删除" @click.stop="deleteFile(file)">
                 <svg
+                  class="tree-arrow"
+                  :class="{ expanded: expandedDirs.has(item.path) }"
                   width="12"
                   height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
+                  stroke-width="2.5"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <svg
+                  class="tree-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
                   stroke-width="2"
                 >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
-              </button>
-            </div>
+                <span class="tree-item-name">{{ item.name }}</span>
+              </div>
+
+              <!-- 文件节点 -->
+              <div
+                v-else
+                class="tree-item tree-file"
+                :class="{ active: currentFile?.path === item.path }"
+                :style="{ paddingLeft: 8 + item.depth * 14 + 'px' }"
+                :title="item.path"
+                @click="openFile({ name: item.name, path: item.path, handle: item.handle! })"
+              >
+                <svg
+                  class="tree-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <div class="file-info">
+                  <span class="tree-item-name">{{ item.name }}</span>
+                </div>
+                <button
+                  class="file-delete-btn"
+                  title="删除"
+                  @click.stop="deleteFile({ name: item.name, path: item.path, handle: item.handle! })"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </template>
           </div>
         </div>
       </transition>
@@ -851,42 +1082,50 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.file-item {
+/* ── 树形文件列表 ── */
+.tree-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border-radius: 5px;
   cursor: pointer;
   transition: background 0.12s;
   position: relative;
 }
 
-.file-item:hover {
+.tree-item:hover {
   background: #f3f4f6;
 }
 
-.file-item.active {
+.tree-file.active {
   background: #ede9fe;
 }
 
-.file-icon {
+.tree-arrow {
+  flex-shrink: 0;
+  color: #9ca3af;
+  transition: transform 0.15s;
+}
+
+.tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
   flex-shrink: 0;
   color: #9ca3af;
 }
 
-.file-item.active .file-icon {
+.tree-dir .tree-icon {
   color: #6366f1;
 }
 
-.file-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+.tree-file.active .tree-icon {
+  color: #6366f1;
 }
 
-.file-item-name {
+.tree-item-name {
   font-size: 12.5px;
   color: #374151;
   white-space: nowrap;
@@ -894,17 +1133,14 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-.file-item.active .file-item-name {
-  color: #4338ca;
-  font-weight: 500;
+.file-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.file-item-path {
-  font-size: 10px;
-  color: #9ca3af;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.tree-file.active .tree-item-name {
+  color: #4338ca;
+  font-weight: 500;
 }
 
 .file-delete-btn {
@@ -921,7 +1157,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.file-item:hover .file-delete-btn {
+.tree-file:hover .file-delete-btn {
   display: flex;
 }
 

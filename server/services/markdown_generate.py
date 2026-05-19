@@ -34,6 +34,9 @@ class GenerateMarkdownRequest(BaseModel):
     answer: str
     image_content: str = ""
     existing_notes: list[ExistingNote] = []
+    # 当用户选择了某个具体笔记时，传入该笔记的完整内容
+    existing_note_filename: Optional[str] = None
+    existing_note_content: Optional[str] = None
     api_key: str
     base_url: str
     model: str
@@ -91,6 +94,13 @@ def _build_prompt(req: GenerateMarkdownRequest) -> str:
     existing_block = _build_existing_notes_block(req.existing_notes)
     image_block = req.image_content.strip() or "（无）"
 
+    # 如果用户指定了要追加到哪个笔记，把该笔记的完整内容也传进去
+    existing_content_block = ""
+    if req.existing_note_filename and req.existing_note_content is not None:
+        content = req.existing_note_content.strip()
+        if content:
+            existing_content_block = f"\n\n【用户选定的目标笔记 {req.existing_note_filename} 的现有内容】\n{content}\n"
+
     return f"""你是一个智能的本地笔记归档助手。用户在阅读《{req.book_name}》时，向 AI 助手提出了一个问题，并得到了回答。
 现在请你将本轮问答整理成一段简洁、结构化的 Markdown 笔记，并判断这段笔记应当：
 - 追加（append）到下面"现有笔记列表"中的某一个文件中（仅当主题/知识点高度相关时）；或
@@ -104,7 +114,7 @@ def _build_prompt(req: GenerateMarkdownRequest) -> str:
 
 【截图相关的文字 / OCR 内容】
 {image_block}
-
+{existing_content_block}
 【现有笔记列表（文件名 -- 摘要）】
 {existing_block}
 
@@ -130,6 +140,74 @@ async def generate_or_append_note(
     """调用 LLM 生成笔记并判断 create/append。"""
 
     client = AsyncOpenAI(api_key=req.api_key, base_url=req.base_url)
+
+    # 如果用户明确选择了某个笔记，直接追加到该笔记
+    if req.existing_note_filename and req.existing_note_filename.strip():
+        target_filename = _sanitize_filename(req.existing_note_filename)
+
+        # 使用简化的 prompt，只生成要追加的内容
+        append_prompt = f"""你是一个笔记整理助手。用户在阅读《{req.book_name}》时，向 AI 助手提出了一个问题并得到了回答。
+请将下面的问答整理成一段简洁、结构化的 Markdown 内容。
+
+【用户的问题】
+{req.question}
+
+【AI 助手的回答】
+{req.answer}
+
+请按以下规则整理 Markdown 内容：
+1. 以一个 ## 开头的小节标题概括本次知识点；
+2. 用列表 / 加粗 / 行内代码 / 公式等方式条理化地总结回答；
+3. 尾部加一行 `> 提问：xxx` 引用原始问题，再加一行斜体的提问时间，例如 `*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*`；
+4. 开头加一条 `\\n\\n---\\n\\n` 分隔线。
+
+请严格、并且仅输出如下结构的 JSON（不要使用 Markdown 代码块包裹，不要附带其它文字）：
+{{
+  "title": "笔记小节标题（不含 # 号）",
+  "markdown": "要追加的 Markdown 内容（按上述规则，开头有分隔线）"
+}}
+"""
+
+        completion = await client.chat.completions.create(
+            model=req.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。",
+                },
+                {
+                    "role": "user",
+                    "content": append_prompt,
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = completion.choices[0].message.content or "{}"
+        logger.debug("markdown_generate append raw output: %s", raw)
+
+        try:
+            data: dict[str, Any] = json.loads(_strip_json_fence(raw))
+        except json.JSONDecodeError:
+            logger.warning("无法解析模型 JSON 输出，使用兜底内容：%s", raw)
+            data = {}
+
+        title = (data.get("title") or req.question or "AI 笔记").strip()
+        markdown = (data.get("markdown") or "").strip()
+
+        if not markdown:
+            markdown = (f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
+                        f"> 提问：{req.question.strip()}\n\n"
+                        f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
+
+        return GenerateMarkdownResult(
+            action="append",
+            target_filename=target_filename,
+            title=title,
+            markdown=markdown,
+            reason=f"用户明确选择追加到 {target_filename}",
+        )
+
+    # 没有指定笔记，让 LLM 决定
     prompt = _build_prompt(req)
     logger.debug("markdown_generate prompt:\n%s", prompt)
 
