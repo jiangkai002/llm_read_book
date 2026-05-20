@@ -17,6 +17,10 @@ from typing import Any, Optional
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 logger = logging.getLogger("markdown_generate")
 
@@ -51,8 +55,9 @@ class GenerateMarkdownResult(BaseModel):
 
 
 # 模型偶尔会用代码块包裹 JSON，需要先剥掉再解析
-_JSON_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$",
-                            re.DOTALL | re.IGNORECASE)
+_JSON_FENCE_RE = re.compile(
+    r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL | re.IGNORECASE
+)
 
 
 def _strip_json_fence(text: str) -> str:
@@ -136,9 +141,15 @@ def _build_prompt(req: GenerateMarkdownRequest) -> str:
 
 
 async def generate_or_append_note(
-        req: GenerateMarkdownRequest) -> GenerateMarkdownResult:
+    req: GenerateMarkdownRequest,
+) -> GenerateMarkdownResult:
     """调用 LLM 生成笔记并判断 create/append。"""
 
+    is_debug = os.getenv("is_debug", "false").strip().lower() == "true"
+    if is_debug:
+        req.api_key = os.getenv("api_key", "")
+        req.base_url = os.getenv("base_url", "")
+        req.model = os.getenv("llm_model", "")
     client = AsyncOpenAI(api_key=req.api_key, base_url=req.base_url)
 
     # 如果用户明确选择了某个笔记，直接追加到该笔记
@@ -195,9 +206,11 @@ async def generate_or_append_note(
         markdown = (data.get("markdown") or "").strip()
 
         if not markdown:
-            markdown = (f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
-                        f"> 提问：{req.question.strip()}\n\n"
-                        f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
+            markdown = (
+                f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
+                f"> 提问：{req.question.strip()}\n\n"
+                f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
+            )
 
         return GenerateMarkdownResult(
             action="append",
@@ -215,16 +228,12 @@ async def generate_or_append_note(
         model=req.model,
         messages=[
             {
-                "role":
-                "system",
-                "content":
-                ("你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。"
-                 ),
+                "role": "system",
+                "content": (
+                    "你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。"
+                ),
             },
-            {
-                "role": "user",
-                "content": prompt
-            },
+            {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
     )
@@ -241,18 +250,20 @@ async def generate_or_append_note(
     if action not in ("create", "append"):
         action = "create"
 
-    target_filename = _sanitize_filename(
-        str(data.get("target_filename") or ""))
+    target_filename = _sanitize_filename(str(data.get("target_filename") or ""))
 
     existing_filenames = {n.filename for n in req.existing_notes}
     if action == "append" and target_filename not in existing_filenames:
         # 模型说要 append，但给出的文件名不在现有列表里，降级为 create
-        logger.warning("模型返回 append，但 target_filename 不在现有列表中：%s -> 降级为 create",
-                       target_filename)
+        logger.warning(
+            "模型返回 append，但 target_filename 不在现有列表中：%s -> 降级为 create",
+            target_filename,
+        )
         action = "create"
 
-    if action == "create" and (not target_filename
-                               or target_filename in existing_filenames):
+    if action == "create" and (
+        not target_filename or target_filename in existing_filenames
+    ):
         # create 时若文件名为空 / 与现有重名，回退到一个安全的默认名
         target_filename = _fallback_filename(req.question)
         # 若仍然重名，加时间戳后缀
@@ -266,13 +277,17 @@ async def generate_or_append_note(
     if not markdown:
         # 兜底：直接使用原始 answer，避免空文件
         if action == "append":
-            markdown = (f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
-                        f"> 提问：{req.question.strip()}\n\n"
-                        f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
+            markdown = (
+                f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
+                f"> 提问：{req.question.strip()}\n\n"
+                f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
+            )
         else:
-            markdown = (f"# {title}\n\n## {title}\n\n{req.answer.strip()}\n\n"
-                        f"> 提问：{req.question.strip()}\n\n"
-                        f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
+            markdown = (
+                f"# {title}\n\n## {title}\n\n{req.answer.strip()}\n\n"
+                f"> 提问：{req.question.strip()}\n\n"
+                f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
+            )
 
     reason = str(data.get("reason") or "").strip()
 
