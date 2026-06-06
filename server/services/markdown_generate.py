@@ -13,12 +13,23 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 logger = logging.getLogger("markdown_generate")
+_SKILL_FILE_PATH = Path(__file__).resolve().parent / "skills" / "markdown_generate" / "SKILL.md"
+
+_SYSTEM_MESSAGE = (
+    "你是一个本地笔记归档助手。用户正在阅读一本书，刚完成一轮问答。"
+    "你的任务是将问答内容整理为结构化 Markdown 笔记，并判断应新建文件还是追加到已有文件。"
+    "严格按用户指定的 JSON schema 输出，不要添加任何额外字段或说明文字。"
+)
+
+_MAX_CONTENT_CHARS = 6000  # ~2000 tokens for Chinese text
+_MAX_IMAGE_CHARS = 2000
 
 
 class ExistingNote(BaseModel):
@@ -57,6 +68,14 @@ def _strip_json_fence(text: str) -> str:
     return m.group(1) if m else text
 
 
+def _truncate_content(text: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
+    """Truncate overly long content to avoid prompt token overflow."""
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n...(内容过长，已截断)"
+
+
 def _build_existing_notes_block(notes: list[ExistingNote]) -> str:
     if not notes:
         return "（当前笔记目录为空，没有任何已有笔记。）"
@@ -89,40 +108,36 @@ def _fallback_filename(question: str) -> str:
 
 def _build_prompt(req: GenerateMarkdownRequest) -> str:
     existing_block = _build_existing_notes_block(req.existing_notes)
-    image_block = req.image_content.strip() or "（无）"
+    image_block = _truncate_content(req.image_content.strip(), _MAX_IMAGE_CHARS) or "（无）"
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    skill_template = _load_skill_template()
+    return skill_template.format(
+        book_name=req.book_name,
+        question=_truncate_content(req.question),
+        answer=_truncate_content(req.answer),
+        image_content=image_block,
+        existing_notes=existing_block,
+        current_time=current_time,
+    )
 
-    return f"""你是一个智能的本地笔记归档助手。用户在阅读《{req.book_name}》时，向 AI 助手提出了一个问题，并得到了回答。
-现在请你将本轮问答整理成一段简洁、结构化的 Markdown 笔记，并判断这段笔记应当：
-- 追加（append）到下面"现有笔记列表"中的某一个文件中（仅当主题/知识点高度相关时）；或
-- 新建（create）一个新的 Markdown 文件（当现有笔记中找不到主题相关的归宿时）。
 
-【用户的问题】
-{req.question}
+_MINIMAL_FALLBACK_TEMPLATE = (
+    "将以下问答整理为 Markdown 笔记，判断新建(create)还是追加(append)到现有文件。\n"
+    "问题：{question}\n回答：{answer}\n截图内容：{image_content}\n"
+    "现有笔记：{existing_notes}\n当前时间：{current_time}\n"
+    "输出 JSON: {{\"action\":\"create|append\","
+    "\"target_filename\":\"...\",\"title\":\"...\","
+    "\"markdown\":\"...\",\"reason\":\"...\"}}"
+)
 
-【AI 助手的回答】
-{req.answer}
 
-【截图相关的文字 / OCR 内容】
-{image_block}
-
-【现有笔记列表（文件名 -- 摘要）】
-{existing_block}
-
-请按以下规则整理 Markdown 内容（字段 markdown）：
-1. 以一个 ## 开头的小节标题概括本次知识点；
-2. 用列表 / 加粗 / 行内代码 / 公式等方式条理化地总结回答；不要冗长复述用户原文；
-3. 尾部加一行 `> 提问：xxx` 引用原始问题，再加一行斜体的提问时间，例如 `*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*`；
-4. 如果是 append，markdown 字段开头加一条 `\\n\\n---\\n\\n` 分隔线，便于追加后视觉分隔；如果是 create，则不要添加这条分隔线，并以一个 `# 标题` 作为整篇笔记的一级标题开头。
-
-请严格、并且仅输出如下结构的 JSON（不要使用 Markdown 代码块包裹，不要附带其它文字）：
-{{
-  "action": "create" 或 "append",
-  "target_filename": "若 append 必须是上方现有笔记列表中的某个文件名；若 create 则给出一个新文件名（必须以 .md 结尾，文件名不要包含 / \\\\ : * ? \\" < > | 等非法字符，使用中文或英文均可）",
-  "title": "笔记小节标题（不含 # 号）",
-  "markdown": "要写入文件的 Markdown 内容（按上述规则）",
-  "reason": "简短说明你为什么选择 create 或 append"
-}}
-"""
+def _load_skill_template() -> str:
+    """读取 SKILL.md 作为 prompt 模板，不存在时回退最小模板。"""
+    try:
+        return _SKILL_FILE_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        logger.warning("未找到 SKILL.md，使用最小内置 prompt 模板：%s", _SKILL_FILE_PATH)
+        return _MINIMAL_FALLBACK_TEMPLATE
 
 
 async def generate_or_append_note(
@@ -136,20 +151,22 @@ async def generate_or_append_note(
     completion = await client.chat.completions.create(
         model=req.model,
         messages=[
-            {
-                "role":
-                "system",
-                "content":
-                ("你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。"
-                 ),
-            },
-            {
-                "role": "user",
-                "content": prompt
-            },
+            {"role": "system", "content": _SYSTEM_MESSAGE},
+            {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
+        temperature=0.3,
+        max_tokens=2048,
     )
+
+    # Token 使用日志
+    usage = completion.usage
+    if usage:
+        logger.info(
+            "markdown_generate tokens: prompt=%d, completion=%d, total=%d",
+            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+        )
+
     raw = completion.choices[0].message.content or "{}"
     logger.debug("markdown_generate raw output: %s", raw)
 
@@ -197,6 +214,8 @@ async def generate_or_append_note(
                         f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
 
     reason = str(data.get("reason") or "").strip()
+    if not reason:
+        reason = f"自动选择{action}模式"
 
     return GenerateMarkdownResult(
         action=action,

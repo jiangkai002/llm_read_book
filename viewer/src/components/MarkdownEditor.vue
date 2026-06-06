@@ -405,13 +405,14 @@ const saveAiNote = async (payload: SaveAiNotePayload): Promise<boolean> => {
       return false
     }
 
+    const reasonText = data.reason ? ` (${data.reason})` : ''
     if (data.action === 'append') {
       const ok = await appendToFile(data.target_filename, data.markdown)
-      if (ok) showStatus(`已追加到《${data.target_filename}》`, 3500)
+      if (ok) showStatus(`已追加到《${data.target_filename}》${reasonText}`, 4500)
       return ok
     }
     const ok = await saveNewFile(data.target_filename, data.markdown)
-    if (ok) showStatus(`已新建《${data.target_filename}》`, 3500)
+    if (ok) showStatus(`已新建《${data.target_filename}》${reasonText}`, 4500)
     return ok
   } catch (e: any) {
     showStatus('AI 笔记保存失败: ' + (e?.message || e), 4500)
