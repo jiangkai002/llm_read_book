@@ -15,6 +15,17 @@ const activeTab = ref<'chat' | 'markdown' | 'onenote'>('chat')
 const mdEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
 const onenoteRef = ref<InstanceType<typeof OnenoteEditor> | null>(null)
 
+// 笔记选择弹窗相关
+interface NoteSummary {
+  filename: string
+  summary: string
+}
+const showNoteSelector = ref(false)
+const noteSummaries = ref<NoteSummary[]>([])
+const pendingAiNotePayload = ref<AiNotePayload | null>(null)
+const isLoadingNotes = ref(false)
+const selectedNoteFilename = ref<string | null>(null)
+
 const onSaveAsMarkdown = async (filename: string, mdContent: string) => {
   activeTab.value = 'markdown'
   await mdEditorRef.value?.saveNewFile(filename, mdContent)
@@ -33,13 +44,67 @@ interface AiNotePayload {
   apiKey: string
   baseUrl: string
   model: string
+  existingNoteFilename?: string
+  existingNoteContent?: string
 }
 
+// 点击"AI笔记"时，先加载笔记列表，让用户选择
 const onSaveAsAiNote = async (payload: AiNotePayload) => {
   activeTab.value = 'markdown'
-  // 等待 markdown 面板挂载并准备就绪
   await nextTick()
+
+  // 检查是否已选择笔记目录
+  const summaries = await mdEditorRef.value?.getNotesSummary()
+  if (!summaries || summaries.length === 0) {
+    // 没有笔记目录或笔记为空，直接让后端决定新建
+    pendingAiNotePayload.value = payload
+    await mdEditorRef.value?.saveAiNote({ ...payload })
+    pendingAiNotePayload.value = null
+    return
+  }
+
+  // 有笔记，显示选择弹窗
+  noteSummaries.value = summaries
+  pendingAiNotePayload.value = payload
+  showNoteSelector.value = true
+}
+
+// 选择新建笔记
+const handleNewNote = async () => {
+  showNoteSelector.value = false
+  if (!pendingAiNotePayload.value) return
+  const payload = { ...pendingAiNotePayload.value }
+  pendingAiNotePayload.value = null
   await mdEditorRef.value?.saveAiNote(payload)
+}
+
+// 选择已有笔记
+const handleSelectNote = async (filename: string) => {
+  showNoteSelector.value = false
+  if (!pendingAiNotePayload.value) return
+
+  // 获取选中笔记的完整内容
+  const content = await mdEditorRef.value?.getNoteContent(filename)
+  const payload = {
+    question: pendingAiNotePayload.value.question,
+    answer: pendingAiNotePayload.value.answer,
+    imageContent: pendingAiNotePayload.value.imageContent,
+    bookName: pendingAiNotePayload.value.bookName,
+    apiKey: pendingAiNotePayload.value.apiKey,
+    baseUrl: pendingAiNotePayload.value.baseUrl,
+    model: pendingAiNotePayload.value.model,
+    existingNoteFilename: filename,
+    existingNoteContent: content || '',
+  }
+  pendingAiNotePayload.value = null
+  await mdEditorRef.value?.saveAiNoteWithExistingNote(payload)
+}
+
+// 关闭弹窗
+const closeNoteSelector = () => {
+  showNoteSelector.value = false
+  pendingAiNotePayload.value = null
+  selectedNoteFilename.value = null
 }
 
 const onPdfReady = (registry: PluginRegistry) => {
@@ -150,6 +215,50 @@ const toggleChat = () => {
           />
           <MarkdownEditor v-show="activeTab === 'markdown'" ref="mdEditorRef" />
           <OnenoteEditor v-show="activeTab === 'onenote'" ref="onenoteRef" />
+        </div>
+
+        <!-- 笔记选择弹窗 -->
+        <div v-if="showNoteSelector" class="modal-overlay" @click.self="closeNoteSelector">
+          <div class="note-selector-modal">
+            <div class="modal-header">
+              <h3>保存到笔记</h3>
+              <button class="modal-close-btn" @click="closeNoteSelector">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body">
+              <button class="note-option new-note-btn" @click="handleNewNote">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <span>新建笔记</span>
+              </button>
+              <div class="note-divider">
+                <span>或选择已有笔记</span>
+              </div>
+              <div class="note-list">
+                <button
+                  v-for="note in noteSummaries"
+                  :key="note.filename"
+                  class="note-option existing-note-btn"
+                  @click="handleSelectNote(note.filename)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <div class="note-info">
+                    <span class="note-name">{{ note.filename }}</span>
+                    <span v-if="note.summary" class="note-preview">{{ note.summary.slice(0, 60) }}{{ note.summary.length > 60 ? '...' : '' }}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </transition>
@@ -274,5 +383,156 @@ const toggleChat = () => {
 .slide-chat-leave-to {
   flex: 0 0 0%;
   opacity: 0;
+}
+
+/* ── 笔记选择弹窗 ── */
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.note-selector-modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  width: 85%;
+  max-height: 70%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111;
+}
+
+.modal-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close-btn:hover {
+  background: #f3f4f6;
+  color: #111;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.note-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.note-option:hover {
+  background: #f9fafb;
+  border-color: #c4b5fd;
+}
+
+.new-note-btn {
+  color: #6366f1;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.new-note-btn:hover {
+  background: #ede9fe;
+  border-color: #6366f1;
+}
+
+.note-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.note-divider::before,
+.note-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.existing-note-btn {
+  color: #374151;
+}
+
+.existing-note-btn svg {
+  flex-shrink: 0;
+  color: #6366f1;
+}
+
+.note-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.note-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #111;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-preview {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

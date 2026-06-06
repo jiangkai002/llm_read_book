@@ -74,6 +74,9 @@ class GenerateOrAppendRequest(BaseModel):
     image_content: str = Field("", description="截图对应文字 / OCR / 选区文本，可为空")
     existing_notes: list[ExistingNote] = Field(
         default_factory=list, description="本地笔记目录现有 .md 文件的文件名 + 摘要")
+    # 当用户选择了某个具体笔记时，传入该笔记的完整内容
+    existing_note_filename: Optional[str] = Field(None, description="用户选择的已有笔记文件名")
+    existing_note_content: Optional[str] = Field(None, description="用户选择的已有笔记的完整内容")
     api_key: str = Field("", description="OpenAI 兼容 API Key，留空则使用服务端 .env 中的默认值")
     base_url: str = Field("", description="OpenAI 兼容 API 根地址")
     model: str = Field("", description="模型名称")
@@ -102,6 +105,8 @@ async def generate_or_append(
         answer=payload.answer,
         image_content=payload.image_content,
         existing_notes=payload.existing_notes,
+        existing_note_filename=payload.existing_note_filename,
+        existing_note_content=payload.existing_note_content,
         api_key=api_key,
         base_url=base_url,
         model=model,
