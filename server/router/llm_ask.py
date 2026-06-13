@@ -2,14 +2,15 @@ import asyncio
 import json
 import logging
 import sys
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
+
+from services.llm_agent import build_agent, parse_history_messages, png_base64_content
 
 load_dotenv()
 
@@ -79,39 +80,17 @@ async def llm_ask(
     base_url = os.getenv("base_url")
     model = os.getenv("llm_model")
 
-    client = AsyncOpenAI(
-        api_key=api_key,
+    agent = build_agent(
+        api_key=api_key or "",
         base_url=base_url,
+        model_name=model or "",
     )
 
-    # 解析历史消息，转换为 OpenAI messages 格式
-    history_messages: list[dict] = []
-    for item in payload.history_chat_list:
-        try:
-            msg = json.loads(item)
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ("user", "assistant") and content:
-                history_messages.append({"role": role, "content": content})
-        except (json.JSONDecodeError, AttributeError):
-            logger.warning("跳过无法解析的历史消息：%s", item)
+    history_messages = parse_history_messages(payload.history_chat_list)
 
     if payload.use_image:
-        # 多模态模式：图片以 image_url 形式传给模型
-        messages = history_messages + [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{payload.image_base64}"
-                        },
-                    },
-                ],
-            },
-        ]
+        # 多模态模式：图片作为 Pydantic AI BinaryContent 传给模型
+        user_prompt = [prompt, png_base64_content(payload.image_base64)]
     else:
         # 纯文本模式：对图片做 OCR，将识别结果拼入 prompt
         if payload.image_base64:
@@ -128,24 +107,20 @@ async def llm_ask(
             except Exception as e:
                 logger.warning("OCR 识别失败，跳过截图内容：%s", e)
 
-        # 纯文本消息格式，兼容非 vision 模型
-        messages = history_messages + [
-            {"role": "user", "content": prompt},
-        ]
+        # 纯文本模式，兼容非 vision 模型
+        user_prompt = prompt
 
     async def generate() -> AsyncIterator[str]:
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-        )
         full_text: list[str] = []
-        async for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta is not None:
-                full_text.append(delta)
-                logger.debug(delta)
-                yield f"data: {json.dumps({'content': delta}, ensure_ascii=False)}\n\n"
+        async with agent.run_stream(
+            user_prompt,
+            message_history=history_messages,
+        ) as result:
+            async for delta in result.stream_text(delta=True):
+                if delta:
+                    full_text.append(delta)
+                    logger.debug(delta)
+                    yield f"data: {json.dumps({'content': delta}, ensure_ascii=False)}\n\n"
         logger.info("流式输出完成，完整内容：%s", "".join(full_text))
         yield "data: [DONE]\n\n"
 

@@ -1,14 +1,13 @@
-import json
 import logging
 import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from auth.jwt_handler import get_current_user
+from services.llm_agent import build_agent
 from services.markdown_generate import (
     ExistingNote,
     GenerateMarkdownRequest,
@@ -47,22 +46,13 @@ async def generate_note(
     prompt += f"请根据书的内容，给出详细的笔记。"
     prompt += f"请注意，笔记的格式必须为markdown格式。"
 
-    client = AsyncOpenAI(
+    agent = build_agent(
         api_key=generate_note.api_key,
         base_url=generate_note.base_url,
+        model_name=generate_note.model,
     )
-    messages = [
-        {
-            "role": "user",
-            "content": prompt,
-        },
-    ]
-    completion = await client.chat.completions.create(
-        model=generate_note.model,
-        messages=messages,
-        response_format={"type": "json_object"},
-    )
-    return completion.choices[0].message.content
+    result = await agent.run(prompt)
+    return result.output
 
 
 class GenerateOrAppendRequest(BaseModel):

@@ -9,17 +9,17 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Optional
 
-from openai import AsyncOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import os
+
+from services.llm_agent import build_agent
 
 load_dotenv()
 
@@ -48,7 +48,7 @@ class GenerateMarkdownRequest(BaseModel):
     question: str
     answer: str
     image_content: str = ""
-    existing_notes: list[ExistingNote] = []
+    existing_notes: list[ExistingNote] = Field(default_factory=list)
     # 当用户选择了某个具体笔记时，传入该笔记的完整内容
     existing_note_filename: Optional[str] = None
     existing_note_content: Optional[str] = None
@@ -65,15 +65,9 @@ class GenerateMarkdownResult(BaseModel):
     reason: str = ""
 
 
-# 模型偶尔会用代码块包裹 JSON，需要先剥掉再解析
-_JSON_FENCE_RE = re.compile(
-    r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL | re.IGNORECASE
-)
-
-
-def _strip_json_fence(text: str) -> str:
-    m = _JSON_FENCE_RE.match(text.strip())
-    return m.group(1) if m else text
+class AppendMarkdownResult(BaseModel):
+    title: str
+    markdown: str
 
 
 def _truncate_content(text: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
@@ -169,8 +163,6 @@ async def generate_or_append_note(
         req.api_key = os.getenv("api_key", "")
         req.base_url = os.getenv("base_url", "")
         req.model = os.getenv("llm_model", "")
-    client = AsyncOpenAI(api_key=req.api_key, base_url=req.base_url)
-
     # 如果用户明确选择了某个笔记，直接追加到该笔记
     if req.existing_note_filename and req.existing_note_filename.strip():
         target_filename = _sanitize_filename(req.existing_note_filename)
@@ -198,31 +190,17 @@ async def generate_or_append_note(
 }}
 """
 
-        completion = await client.chat.completions.create(
-            model=req.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。",
-                },
-                {
-                    "role": "user",
-                    "content": append_prompt,
-                },
-            ],
-            response_format={"type": "json_object"},
+        agent = build_agent(
+            api_key=req.api_key,
+            base_url=req.base_url,
+            model_name=req.model,
+            system_prompt="你是一个严谨的助手，必须按用户要求输出结构化结果。",
+            output_type=AppendMarkdownResult,
         )
-        raw = completion.choices[0].message.content or "{}"
-        logger.debug("markdown_generate append raw output: %s", raw)
+        result = await agent.run(append_prompt)
 
-        try:
-            data: dict[str, Any] = json.loads(_strip_json_fence(raw))
-        except json.JSONDecodeError:
-            logger.warning("无法解析模型 JSON 输出，使用兜底内容：%s", raw)
-            data = {}
-
-        title = (data.get("title") or req.question or "AI 笔记").strip()
-        markdown = (data.get("markdown") or "").strip()
+        title = (result.output.title or req.question or "AI 笔记").strip()
+        markdown = (result.output.markdown or "").strip()
 
         if not markdown:
             markdown = (
@@ -243,44 +221,24 @@ async def generate_or_append_note(
     prompt = _build_prompt(req)
     logger.debug("markdown_generate prompt:\n%s", prompt)
 
-    completion = await client.chat.completions.create(
-        model=req.model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "你是一个严谨的助手，必须按用户要求只输出 JSON 对象，不要附加任何说明文字、不要使用 Markdown 代码块包裹。"
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.3,
-        max_tokens=2048,
+    agent = build_agent(
+        api_key=req.api_key,
+        base_url=req.base_url,
+        model_name=req.model,
+        system_prompt=(
+            "你是一个严谨的助手，必须按用户要求输出结构化结果。"
+            "不要附加任何说明文字、不要使用 Markdown 代码块包裹。"
+        ),
+        output_type=GenerateMarkdownResult,
     )
+    result = await agent.run(prompt)
+    data = result.output
 
-    # Token 使用日志
-    usage = completion.usage
-    if usage:
-        logger.info(
-            "markdown_generate tokens: prompt=%d, completion=%d, total=%d",
-            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
-        )
-
-    raw = completion.choices[0].message.content or "{}"
-    logger.debug("markdown_generate raw output: %s", raw)
-
-    try:
-        data: dict[str, Any] = json.loads(_strip_json_fence(raw))
-    except json.JSONDecodeError:
-        logger.warning("无法解析模型 JSON 输出，回退为 create 模式：%s", raw)
-        data = {}
-
-    action = (data.get("action") or "").strip().lower()
+    action = (data.action or "").strip().lower()
     if action not in ("create", "append"):
         action = "create"
 
-    target_filename = _sanitize_filename(str(data.get("target_filename") or ""))
+    target_filename = _sanitize_filename(data.target_filename)
 
     existing_filenames = {n.filename for n in req.existing_notes}
     if action == "append" and target_filename not in existing_filenames:
@@ -301,8 +259,8 @@ async def generate_or_append_note(
             stem = target_filename[:-3]
             target_filename = f"{stem}-{datetime.now().strftime('%H%M%S')}.md"
 
-    title = (data.get("title") or req.question or "AI 笔记").strip()
-    markdown = (data.get("markdown") or "").strip()
+    title = (data.title or req.question or "AI 笔记").strip()
+    markdown = (data.markdown or "").strip()
 
     if not markdown:
         # 兜底：直接使用原始 answer，避免空文件
@@ -319,7 +277,7 @@ async def generate_or_append_note(
                 f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
             )
 
-    reason = str(data.get("reason") or "").strip()
+    reason = (data.reason or "").strip()
     if not reason:
         reason = f"自动选择{action}模式"
 
