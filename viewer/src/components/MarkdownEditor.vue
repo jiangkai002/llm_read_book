@@ -9,7 +9,7 @@ import editIcon from '@/assets/markdown/editIcon.svg'
 import previewIcon from '@/assets/markdown/previewIcon.svg'
 import fileListIcon from '@/assets/markdown/fileListIcon.svg'
 
-import { GenerateNoteService } from '@/api'
+import { getBackendBaseUrl } from '@/api/client'
 
 interface MdFile {
   name: string
@@ -43,6 +43,44 @@ const newFileInputRef = ref<HTMLInputElement | null>(null)
 let dirHandle: FileSystemDirectoryHandle | null = null
 let statusTimer: ReturnType<typeof setTimeout> | null = null
 let skipDirtyFlag = false
+
+const MARKDOWN_EXT_RE = /\.(md|markdown)$/i
+const ILLEGAL_FILENAME_RE = /[\\/:*?"<>|\r\n\t]/g
+
+const generateNoteUrl = () => `${getBackendBaseUrl()}/api/generate_note/generate_or_append`
+
+const normalizeMarkdownFilename = (filename: string): string => {
+  let name = filename.trim().replace(ILLEGAL_FILENAME_RE, '').replace(/^\.+/, '').trim()
+  if (!name) name = `note-${Date.now()}`
+  if (!MARKDOWN_EXT_RE.test(name)) name += '.md'
+  return name
+}
+
+const makeUniqueRootFilename = (filename: string): string => {
+  const safeName = normalizeMarkdownFilename(filename)
+  const existing = new Set(files.value.map((f) => f.path))
+  if (!existing.has(safeName)) return safeName
+
+  const dot = safeName.lastIndexOf('.')
+  const stem = dot >= 0 ? safeName.slice(0, dot) : safeName
+  const ext = dot >= 0 ? safeName.slice(dot) : '.md'
+  let index = 2
+  let candidate = `${stem}-${index}${ext}`
+  while (existing.has(candidate)) {
+    index += 1
+    candidate = `${stem}-${index}${ext}`
+  }
+  return candidate
+}
+
+const findFileByPathOrUniqueName = (filename: string): MdFile | null => {
+  const normalized = filename.trim().replace(/\\/g, '/')
+  const byPath = files.value.find((f) => f.path === normalized)
+  if (byPath) return byPath
+
+  const byName = files.value.filter((f) => f.name === normalized)
+  return byName.length === 1 ? byName[0] : null
+}
 
 const isApiSupported = computed(() => 'showDirectoryPicker' in window)
 const renderedHtml = computed(() => marked(content.value) as string)
@@ -199,7 +237,7 @@ async function scanDir(
   const dirs: string[] = []
   for await (const entry of (handle as any).values()) {
     const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name
-    if (entry.kind === 'file' && /\.(md|markdown)$/i.test(entry.name)) {
+    if (entry.kind === 'file' && MARKDOWN_EXT_RE.test(entry.name)) {
       files.push({ name: entry.name, path: entryPath, handle: entry })
     } else if (entry.kind === 'directory' && !entry.name.startsWith('.')) {
       dirs.push(entryPath)
@@ -286,12 +324,12 @@ const startNewFile = async () => {
 }
 
 const createNewFile = async () => {
-  let name = newFileName.value.trim()
-  if (!name) {
+  const rawName = newFileName.value.trim()
+  if (!rawName) {
     showNewFileInput.value = false
     return
   }
-  if (!name.endsWith('.md') && !name.endsWith('.markdown')) name += '.md'
+  const name = makeUniqueRootFilename(rawName)
 
   if (!dirHandle) {
     showNewFileInput.value = false
@@ -307,7 +345,7 @@ const createNewFile = async () => {
     await writable.close()
 
     await refreshFiles()
-    const newFile = files.value.find((f) => f.name === name)
+    const newFile = files.value.find((f) => f.path === name)
     if (newFile) {
       skipDirtyFlag = true
       content.value = ''
@@ -380,8 +418,7 @@ const saveNewFile = async (filename: string, mdContent: string): Promise<boolean
     return false
   }
   try {
-    let name = filename.trim()
-    if (!name.endsWith('.md') && !name.endsWith('.markdown')) name += '.md'
+    const name = makeUniqueRootFilename(filename)
     const fh = await dirHandle.getFileHandle(name, { create: true })
     const writable = await (fh as any).createWritable()
     await writable.write(mdContent)
@@ -389,7 +426,7 @@ const saveNewFile = async (filename: string, mdContent: string): Promise<boolean
     await refreshFiles()
     showStatus(`已保存 ${name}`)
 
-    const created = files.value.find((f) => f.name === name)
+    const created = files.value.find((f) => f.path === name)
     if (created) await openFile(created)
     return true
   } catch (e: any) {
@@ -412,16 +449,16 @@ const getNotesSummary = async (maxChars = 240): Promise<NoteSummary[]> => {
   for (const f of files.value) {
     try {
       const fileObj = await f.handle.getFile()
-      const text = await fileObj.text()
+      const text = await fileObj.slice(0, Math.max(maxChars * 8, 2048)).text()
       // 仅取首部纯文本（去除多余空行），用于让 LLM 大致理解笔记主题
       const summary = text
         .replace(/```[\s\S]*?```/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, maxChars)
-      result.push({ filename: f.name, summary })
+      result.push({ filename: f.path, summary })
     } catch {
-      result.push({ filename: f.name, summary: '' })
+      result.push({ filename: f.path, summary: '' })
     }
   }
   return result
@@ -435,7 +472,7 @@ const appendToFile = async (filename: string, contentToAppend: string): Promise<
     return false
   }
   if (files.value.length === 0) await refreshFiles()
-  let target = files.value.find((f) => f.name === filename)
+  let target = findFileByPathOrUniqueName(filename)
   if (!target) {
     // 没找到目标文件，作为新文件创建
     return saveNewFile(filename, contentToAppend.replace(/^\s*---\s*/, ''))
@@ -449,7 +486,7 @@ const appendToFile = async (filename: string, contentToAppend: string): Promise<
     await refreshFiles()
     showStatus(`已追加到 ${filename}`)
 
-    const updated = files.value.find((f) => f.name === filename)
+    const updated = findFileByPathOrUniqueName(target.path)
     if (updated) await openFile(updated)
     return true
   } catch (e: any) {
@@ -482,8 +519,9 @@ const saveAiNote = async (payload: SaveAiNotePayload): Promise<boolean> => {
   showStatus('AI 正在整理笔记...', 8000)
   try {
     const existingNotes = await getNotesSummary()
-    const res = await fetch('/api/generate_note/generate_or_append', {
+    const res = await fetch(generateNoteUrl(), {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         book_name: payload.bookName || '当前书籍',
@@ -532,7 +570,7 @@ const saveAiNote = async (payload: SaveAiNotePayload): Promise<boolean> => {
 const getNoteContent = async (filename: string): Promise<string | null> => {
   if (!dirHandle) return null
   if (files.value.length === 0) await refreshFiles()
-  const target = files.value.find((f) => f.name === filename)
+  const target = findFileByPathOrUniqueName(filename)
   if (!target) return null
   try {
     const fileObj = await target.handle.getFile()
@@ -563,8 +601,9 @@ const saveAiNoteWithExistingNote = async (payload: SaveAiNoteWithExistingPayload
     // 获取其他笔记摘要（排除当前选中的）
     const otherNotes = (await getNotesSummary()).filter(n => n.filename !== payload.existingNoteFilename)
 
-    const res = await fetch('/api/generate_note/generate_or_append', {
+    const res = await fetch(generateNoteUrl(), {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         book_name: payload.bookName || '当前书籍',

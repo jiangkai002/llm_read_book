@@ -26,10 +26,15 @@ load_dotenv()
 logger = logging.getLogger("markdown_generate")
 _SKILL_FILE_PATH = Path(__file__).resolve().parent / "skills" / "markdown_generate" / "SKILL.md"
 
-_SYSTEM_MESSAGE = (
-    "你是一个本地笔记归档助手。用户正在阅读一本书，刚完成一轮问答。"
-    "你的任务是将问答内容整理为结构化 Markdown 笔记，并判断应新建文件还是追加到已有文件。"
-    "严格按用户指定的 JSON schema 输出，不要添加任何额外字段或说明文字。"
+_FALLBACK_SKILL_TEMPLATE = (
+    "你是一个本地笔记归档助手。用户正在阅读《{book_name}》，刚完成一轮问答。"
+    "请将问答内容整理为结构化 Markdown 笔记，并判断应新建文件还是追加到已有文件。\n\n"
+    "用户问题：{question}\n\n"
+    "AI 回答：{answer}\n\n"
+    "截图 / OCR 内容：{image_content}\n\n"
+    "现有笔记列表：\n{existing_notes}\n\n"
+    "当前时间：{current_time}\n\n"
+    "严格输出 action、target_filename、title、markdown、reason 字段。"
 )
 
 _MAX_CONTENT_CHARS = 6000  # ~2000 tokens for Chinese text
@@ -65,17 +70,45 @@ class GenerateMarkdownResult(BaseModel):
     reason: str = ""
 
 
-class AppendMarkdownResult(BaseModel):
-    title: str
-    markdown: str
-
-
 def _truncate_content(text: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
     """Truncate overly long content to avoid prompt token overflow."""
     text = text.strip()
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "\n...(内容过长，已截断)"
+
+
+def _load_skill_template() -> str:
+    """Read the local markdown generation skill so prompt rules live outside code."""
+    try:
+        return _SKILL_FILE_PATH.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning("无法读取 markdown_generate skill，使用内置兜底提示词：%s", exc)
+        return _FALLBACK_SKILL_TEMPLATE
+
+
+def _render_skill_template(
+    *,
+    book_name: str,
+    question: str,
+    answer: str,
+    image_content: str,
+    existing_notes: str,
+    current_time: str,
+) -> str:
+    # SKILL.md contains JSON examples, so avoid str.format and only replace known placeholders.
+    prompt = _load_skill_template()
+    replacements = {
+        "{book_name}": book_name,
+        "{question}": question,
+        "{answer}": answer,
+        "{image_content}": image_content,
+        "{existing_notes}": existing_notes,
+        "{current_time}": current_time,
+    }
+    for placeholder, value in replacements.items():
+        prompt = prompt.replace(placeholder, value)
+    return prompt
 
 
 def _build_existing_notes_block(notes: list[ExistingNote]) -> str:
@@ -90,8 +123,8 @@ def _build_existing_notes_block(notes: list[ExistingNote]) -> str:
     return "\n".join(lines)
 
 
-def _sanitize_filename(name: str) -> str:
-    """模型给出的文件名可能含非法字符，做一次清理并保证 .md 后缀。"""
+def _sanitize_new_filename(name: str) -> str:
+    """Sanitize a model-proposed new file name and keep it at the notes root."""
     name = (name or "").strip().strip("\"'")
     name = re.sub(r"[\\/:*?\"<>|\r\n\t]", "", name)
     if not name:
@@ -99,6 +132,31 @@ def _sanitize_filename(name: str) -> str:
     if not (name.endswith(".md") or name.endswith(".markdown")):
         name += ".md"
     return name
+
+
+def _normalize_existing_filename(name: str) -> str:
+    """Normalize an existing note identifier while preserving relative directories."""
+    name = (name or "").strip().strip("\"'").replace("\\", "/")
+    parts = [
+        re.sub(r"[\\:*?\"<>|\r\n\t]", "", part).strip()
+        for part in name.split("/")
+        if part.strip() and part.strip() not in (".", "..")
+    ]
+    return "/".join(parts)
+
+
+def _resolve_existing_filename(name: str, existing_filenames: set[str]) -> Optional[str]:
+    """Resolve exact path first, then a unique basename for backward compatibility."""
+    normalized = _normalize_existing_filename(name)
+    if normalized in existing_filenames:
+        return normalized
+
+    basename_matches = [
+        filename for filename in existing_filenames if Path(filename).name == Path(normalized).name
+    ]
+    if len(basename_matches) == 1:
+        return basename_matches[0]
+    return None
 
 
 def _fallback_filename(question: str) -> str:
@@ -110,47 +168,30 @@ def _fallback_filename(question: str) -> str:
 
 def _build_prompt(req: GenerateMarkdownRequest) -> str:
     existing_block = _build_existing_notes_block(req.existing_notes)
-    image_block = req.image_content.strip() or "（无）"
+    image_block = _truncate_content(req.image_content, _MAX_IMAGE_CHARS) or "（无）"
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # 如果用户指定了要追加到哪个笔记，把该笔记的完整内容也传进去
     existing_content_block = ""
     if req.existing_note_filename and req.existing_note_content is not None:
-        content = req.existing_note_content.strip()
+        content = _truncate_content(req.existing_note_content)
         if content:
-            existing_content_block = f"\n\n【用户选定的目标笔记 {req.existing_note_filename} 的现有内容】\n{content}\n"
+            existing_content_block = (
+                f"\n\n# 补充上下文\n\n"
+                f"用户选定的目标笔记 `{req.existing_note_filename}` 当前内容如下：\n\n{content}\n"
+            )
 
-    return f"""你是一个智能的本地笔记归档助手。用户在阅读《{req.book_name}》时，向 AI 助手提出了一个问题，并得到了回答。
-现在请你将本轮问答整理成一段简洁、结构化的 Markdown 笔记，并判断这段笔记应当：
-- 追加（append）到下面"现有笔记列表"中的某一个文件中（仅当主题/知识点高度相关时）；或
-- 新建（create）一个新的 Markdown 文件（当现有笔记中找不到主题相关的归宿时）。
-
-【用户的问题】
-{req.question}
-
-【AI 助手的回答】
-{req.answer}
-
-【截图相关的文字 / OCR 内容】
-{image_block}
-{existing_content_block}
-【现有笔记列表（文件名 -- 摘要）】
-{existing_block}
-
-请按以下规则整理 Markdown 内容（字段 markdown）：
-1. 以一个 ## 开头的小节标题概括本次知识点；
-2. 用列表 / 加粗 / 行内代码 / 公式等方式条理化地总结回答；不要冗长复述用户原文；
-3. 尾部加一行 `> 提问：xxx` 引用原始问题，再加一行斜体的提问时间，例如 `*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*`；
-4. 如果是 append，markdown 字段开头加一条 `\\n\\n---\\n\\n` 分隔线，便于追加后视觉分隔；如果是 create，则不要添加这条分隔线，并以一个 `# 标题` 作为整篇笔记的一级标题开头。
-
-请严格、并且仅输出如下结构的 JSON（不要使用 Markdown 代码块包裹，不要附带其它文字）：
-{{
-  "action": "create" 或 "append",
-  "target_filename": "若 append 必须是上方现有笔记列表中的某个文件名；若 create 则给出一个新文件名（必须以 .md 结尾，文件名不要包含 / \\\\ : * ? \\" < > | 等非法字符，使用中文或英文均可）",
-  "title": "笔记小节标题（不含 # 号）",
-  "markdown": "要写入文件的 Markdown 内容（按上述规则）",
-  "reason": "简短说明你为什么选择 create 或 append"
-}}
-"""
+    return (
+        _render_skill_template(
+            book_name=req.book_name,
+            question=req.question,
+            answer=_truncate_content(req.answer),
+            image_content=image_block,
+            existing_notes=existing_block,
+            current_time=current_time,
+        )
+        + existing_content_block
+    )
 
 
 async def generate_or_append_note(
@@ -165,49 +206,36 @@ async def generate_or_append_note(
         req.model = os.getenv("llm_model", "")
     # 如果用户明确选择了某个笔记，直接追加到该笔记
     if req.existing_note_filename and req.existing_note_filename.strip():
-        target_filename = _sanitize_filename(req.existing_note_filename)
+        target_filename = _normalize_existing_filename(req.existing_note_filename)
 
-        # 使用简化的 prompt，只生成要追加的内容
-        append_prompt = f"""你是一个笔记整理助手。用户在阅读《{req.book_name}》时，向 AI 助手提出了一个问题并得到了回答。
-请将下面的问答整理成一段简洁、结构化的 Markdown 内容。
-
-【用户的问题】
-{req.question}
-
-【AI 助手的回答】
-{req.answer}
-
-请按以下规则整理 Markdown 内容：
-1. 以一个 ## 开头的小节标题概括本次知识点；
-2. 用列表 / 加粗 / 行内代码 / 公式等方式条理化地总结回答；
-3. 尾部加一行 `> 提问：xxx` 引用原始问题，再加一行斜体的提问时间，例如 `*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*`；
-4. 开头加一条 `\\n\\n---\\n\\n` 分隔线。
-
-请严格、并且仅输出如下结构的 JSON（不要使用 Markdown 代码块包裹，不要附带其它文字）：
-{{
-  "title": "笔记小节标题（不含 # 号）",
-  "markdown": "要追加的 Markdown 内容（按上述规则，开头有分隔线）"
-}}
-"""
+        append_prompt = (
+            _build_prompt(req)
+            + "\n\n# 强制归档约束\n\n"
+            + f"用户已经明确选择目标笔记 `{target_filename}`。"
+            + "本次必须返回 `action: append`，`target_filename` 必须完全等于该文件名，"
+            + "markdown 必须以 `\\n\\n---\\n\\n` 开头，且不要生成一级标题。"
+        )
 
         agent = build_agent(
             api_key=req.api_key,
             base_url=req.base_url,
             model_name=req.model,
             system_prompt="你是一个严谨的助手，必须按用户要求输出结构化结果。",
-            output_type=AppendMarkdownResult,
+            output_type=GenerateMarkdownResult,
         )
         result = await agent.run(append_prompt)
 
         title = (result.output.title or req.question or "AI 笔记").strip()
-        markdown = (result.output.markdown or "").strip()
+        markdown = (result.output.markdown or "").rstrip()
 
-        if not markdown:
+        if not markdown.strip():
             markdown = (
                 f"\n\n---\n\n## {title}\n\n{req.answer.strip()}\n\n"
                 f"> 提问：{req.question.strip()}\n\n"
                 f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
             )
+        elif not markdown.startswith("\n\n---\n\n"):
+            markdown = "\n\n---\n\n" + markdown.lstrip()
 
         return GenerateMarkdownResult(
             action="append",
@@ -238,16 +266,21 @@ async def generate_or_append_note(
     if action not in ("create", "append"):
         action = "create"
 
-    target_filename = _sanitize_filename(data.target_filename)
-
     existing_filenames = {n.filename for n in req.existing_notes}
-    if action == "append" and target_filename not in existing_filenames:
-        # 模型说要 append，但给出的文件名不在现有列表里，降级为 create
-        logger.warning(
-            "模型返回 append，但 target_filename 不在现有列表中：%s -> 降级为 create",
-            target_filename,
-        )
-        action = "create"
+    if action == "append":
+        resolved = _resolve_existing_filename(data.target_filename, existing_filenames)
+        if resolved:
+            target_filename = resolved
+        else:
+            target_filename = _sanitize_new_filename(data.target_filename)
+            # 模型说要 append，但给出的文件名不在现有列表里，降级为 create
+            logger.warning(
+                "模型返回 append，但 target_filename 不在现有列表中：%s -> 降级为 create",
+                data.target_filename,
+            )
+            action = "create"
+    else:
+        target_filename = _sanitize_new_filename(data.target_filename)
 
     if action == "create" and (
         not target_filename or target_filename in existing_filenames
@@ -260,9 +293,9 @@ async def generate_or_append_note(
             target_filename = f"{stem}-{datetime.now().strftime('%H%M%S')}.md"
 
     title = (data.title or req.question or "AI 笔记").strip()
-    markdown = (data.markdown or "").strip()
+    markdown = (data.markdown or "").rstrip()
 
-    if not markdown:
+    if not markdown.strip():
         # 兜底：直接使用原始 answer，避免空文件
         if action == "append":
             markdown = (
@@ -276,6 +309,8 @@ async def generate_or_append_note(
                 f"> 提问：{req.question.strip()}\n\n"
                 f"*记于 {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
             )
+    elif action == "append" and not markdown.startswith("\n\n---\n\n"):
+        markdown = "\n\n---\n\n" + markdown.lstrip()
 
     reason = (data.reason or "").strip()
     if not reason:

@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 import type { Message } from './useChatHistory'
 import type { ApiConfig } from './useApiConfig'
 import { normalizeOpenAIBaseUrl } from './useApiConfig'
+import { getBackendBaseUrl } from '@/api/client'
 
 const PLACEHOLDER_IMAGE_BASE64 = ''
 
@@ -23,7 +24,7 @@ export function useLLM(
       .filter((m) => m.content.trim())
       .map((m) => {
         const roleLabel = m.role === 'user' ? 'user' : 'assistant'
-        return `{"role": "${roleLabel}", "content": "${m.content.trim()}"}`
+        return JSON.stringify({ role: roleLabel, content: m.content.trim() })
       })
   }
 
@@ -47,9 +48,10 @@ export function useLLM(
       history_chat_list: buildHistoryChatList(),
     }
 
-    // 前后端同容器部署，使用相对路径；fetch 可保留 ReadableStream，axios 不行。
-    const response = await fetch('/api/llm/llm_ask', {
+    // fetch keeps ReadableStream support for SSE; axios buffers in browsers.
+    const response = await fetch(`${getBackendBaseUrl()}/api/llm/llm_ask`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
